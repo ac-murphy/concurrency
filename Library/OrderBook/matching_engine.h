@@ -9,28 +9,33 @@
 class matching_engine
 {
 public:
-    matching_engine() = default;
+    matching_engine() = delete;
     ~matching_engine() = default;
 
-public:
-    void match(limit_order<BUY>& buy_order)
-    {
-        // Ensure requested stock is available.
-        if (!_sell_orders.contains(buy_order.stock_name))
-        {
-            std::cerr << "requested stock is unavailable" << std::endl;
-            return;
-        }
+    matching_engine(const std::string& stock_name)
+    : _stock_name(stock_name)
+    {}
 
+public:
+    template <typename order_type>
+    void match(order_type& order)
+    {
+        matching_engine::_match(order);
+        matching_engine::clean_up();
+    }
+
+private:
+    void _match(limit_order<BUY>& buy_order)
+    {
         // If there are no resting sell orders with the given price, put buy order in the book.
-        if (!_sell_orders.at(buy_order.stock_name).contains(buy_order.price))
+        if (!_sell_orders.contains(buy_order.price))
         {
-            _buy_orders.at(buy_order.stock_name)[buy_order.price].push_back(buy_order);
+            _buy_orders[buy_order.price].push_back(buy_order);
             return;
         }
 
         // Search for an exact match (same price and shares).
-        auto& sell_orders = _sell_orders.at(buy_order.stock_name).at(buy_order.price);
+        auto& sell_orders = _sell_orders.at(buy_order.price);
         for (limit_order<SELL>& sell_order : sell_orders)
             if (sell_order.shares == buy_order.shares)
             {
@@ -47,26 +52,19 @@ public:
         }
 
         // If there are shares left over, put buy order in the book.
-        _buy_orders.at(buy_order.stock_name)[buy_order.price].push_back(buy_order);
+        _buy_orders[buy_order.price].push_back(buy_order);
     }
-    void match(limit_order<SELL>& sell_order)
+    void _match(limit_order<SELL>& sell_order)
     {
-        // Ensure requested stock is available.
-        if (!_sell_orders.contains(sell_order.stock_name))
-        {
-            std::cerr << "requested stock is unavailable" << std::endl;
-            return;
-        }
-
         // If there are no resting buy orders with the given price, put sell order in the book.
-        if (!_buy_orders.at(sell_order.stock_name).contains(sell_order.price))
+        if (!_buy_orders.contains(sell_order.price))
         {
-            _sell_orders.at(sell_order.stock_name)[sell_order.price].push_back(sell_order);
+            _sell_orders[sell_order.price].push_back(sell_order);
             return;
         }
 
         // Search for an exact match (same price and shares).
-        auto& buy_orders = _buy_orders.at(sell_order.stock_name).at(sell_order.price);
+        auto& buy_orders = _buy_orders.at(sell_order.price);
         for (limit_order<BUY>& buy_order : buy_orders)
             if (buy_order.shares == sell_order.shares)
             {
@@ -83,19 +81,12 @@ public:
         }
 
         // If there are shares left over, put sell order in the book.
-        _sell_orders.at(sell_order.stock_name)[sell_order.price].push_back(sell_order);
+        _sell_orders[sell_order.price].push_back(sell_order);
     }
-    void match(market_order<BUY>& buy_order)
+    void _match(market_order<BUY>& buy_order)
     {
-        // Ensure requested stock is available.
-        if (!_sell_orders.contains(buy_order.stock_name))
-        {
-            std::cerr << "requested stock is unavailable" << std::endl;
-            return;
-        }
-
         // Iterate over resting sell orders in order of lowest ask.
-        for (auto& [price, sell_orders] : _sell_orders.at(buy_order.stock_name))
+        for (auto& [price, sell_orders] : _sell_orders)
         {
             for (limit_order<SELL>& sell_order : sell_orders)
             {
@@ -105,17 +96,10 @@ public:
             }
         }
     }
-    void match(market_order<SELL>& sell_order)
+    void _match(market_order<SELL>& sell_order)
     {
-        // Ensure requested stock is available.
-        if (!_buy_orders.contains(sell_order.stock_name))
-        {
-            std::cerr << "requested stock is unavailable" << std::endl;
-            return;
-        }
-
         // Iterate over resting sell orders in order of lowest ask.
-        for (auto& [price, buy_orders] : _buy_orders.at(sell_order.stock_name))
+        for (auto& [price, buy_orders] : _buy_orders)
         {
             for (limit_order<BUY>& buy_order : buy_orders)
             {
@@ -124,12 +108,6 @@ public:
                     return;
             }
         }
-    }
-
-    void new_stock(const stock& stock)
-    {
-        _buy_orders.try_emplace(stock.name);
-        _sell_orders.try_emplace(stock.name);
     }
 
 public:
@@ -214,27 +192,41 @@ private:
 
     void remove(limit_order<BUY>& buy_order)
     {
-        if (!_buy_orders.at(buy_order.stock_name).contains(buy_order.price))
+        if (!_buy_orders.contains(buy_order.price))
             return;
 
-        auto& buy_orders = _buy_orders.at(buy_order.stock_name).at(buy_order.price);
+        auto& buy_orders = _buy_orders.at(buy_order.price);
         const auto it = std::ranges::find(buy_orders, buy_order);
-        if (it == buy_orders.end())
-            return;
+        if (it == buy_orders.end()) return;
 
+        const uint32_t price = buy_order.price;
         buy_orders.erase(it);
+        if (buy_orders.empty())
+            _empty_buy_order_price_lists.push_back(price);
     }
     void remove(limit_order<SELL>& sell_order)
     {
-        if (!_sell_orders.at(sell_order.stock_name).contains(sell_order.price))
+        if (!_sell_orders.contains(sell_order.price))
             return;
 
-        auto& sell_orders = _sell_orders.at(sell_order.stock_name).at(sell_order.price);
+        auto& sell_orders = _sell_orders.at(sell_order.price);
         const auto it = std::ranges::find(sell_orders, sell_order);
-        if (it == sell_orders.end())
-            return;
+        if (it == sell_orders.end()) return;
 
+        const uint32_t price = sell_order.price;
         sell_orders.erase(it);
+        if (sell_orders.empty())
+            _empty_sell_order_price_lists.push_back(price);
+    }
+    void clean_up()
+    {
+        for (const auto& price : _empty_buy_order_price_lists)
+            _buy_orders.erase(price);
+        for (const auto& price : _empty_sell_order_price_lists)
+            _sell_orders.erase(price);
+
+        _empty_buy_order_price_lists.clear();
+        _empty_sell_order_price_lists.clear();
     }
 
 private:
@@ -243,7 +235,12 @@ private:
 private:
     uint32_t _completed_trade_id = 0;
 
+    std::deque<uint32_t> _empty_buy_order_price_lists;
+    std::deque<uint32_t> _empty_sell_order_price_lists;
+
+    const std::string _stock_name;
+
     std::deque<trade> _trades;
-    std::unordered_map<std::string, std::map<uint32_t, std::deque<limit_order<BUY>>, std::greater<>>> _buy_orders;
-    std::unordered_map<std::string, std::map<uint32_t, std::deque<limit_order<SELL>>, std::less<>>> _sell_orders;
+    std::map<uint32_t, std::deque<limit_order<BUY>>, std::greater<>> _buy_orders;
+    std::map<uint32_t, std::deque<limit_order<SELL>>, std::less<>> _sell_orders;
 };

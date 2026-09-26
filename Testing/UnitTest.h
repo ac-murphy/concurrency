@@ -2,30 +2,32 @@
 #include "gtest/gtest.h"
 #include "order_book.h"
 
-class UnitTest : public ::testing::Test {};
+class UnitTest : public ::testing::Test
+{
+public:
+    std::map<std::string, order_book> _order_books;
+};
 
 TEST_F(UnitTest, TMP)
 {
-    order_book book;
-    book.add_stock("AAPL");
+    order_book book("AAPL");
 
-    book.ask(0, "AAPL", 500, 100'25);
-    book.ask(0, "AAPL", 100, 100'10);
+    book.ask(0, 500, 100'25);
+    book.ask(0, 100, 100'10);
 
-    book.bid(0, "AAPL", 60, 100'10);
-    book.bid(0, "AAPL", 100, 100'10);
+    book.bid(0, 60, 100'10);
+    book.bid(0, 100, 100'10);
 }
 
 TEST_F(UnitTest, ExactMatch)
 {
-    order_book book;
-    book.add_stock("AAPL");
-    client c0(book);
-    client c1(book);
+    order_book book("AAPL");
+    client c0;
+    client c1;
 
     // Place orders.
-    c0.ask("AAPL", 200, 100'10);
-    c1.bid("AAPL", 200, 100'10);
+    c0.ask(book, 200, 100'10);
+    c1.bid(book, 200, 100'10);
 
     // Check trade has correct details.
     auto trades = book.query_trades();
@@ -45,18 +47,17 @@ TEST_F(UnitTest, ExactMatch)
 }
 TEST_F(UnitTest, LimitOrder_Bid)
 {
-    order_book book;
-    book.add_stock("AAPL");
-    client customer0(book);
-    client vendor0(book);
-    client vendor1(book);
-    client vendor2(book);
+    order_book book("AAPL");
+    client customer0;
+    client vendor0;
+    client vendor1;
+    client vendor2;
 
     // Place orders.
-    vendor0.ask("AAPL", 250, 100'10);
-    vendor1.ask("AAPL", 200, 100'10);
-    vendor2.ask("AAPL", 100, 100'10);
-    customer0.bid("AAPL", 500, 100'10);
+    vendor0.ask(book, 250, 100'10);
+    vendor1.ask(book, 200, 100'10);
+    vendor2.ask(book, 100, 100'10);
+    customer0.bid(book, 500, 100'10);
 
     // Check trades have correct details.
     auto trades = book.query_trades();
@@ -87,18 +88,17 @@ TEST_F(UnitTest, LimitOrder_Bid)
 }
 TEST_F(UnitTest, LimitOrder_Ask)
 {
-    order_book book;
-    book.add_stock("AAPL");
-    client vendor0(book);
-    client customer0(book);
-    client customer1(book);
-    client customer2(book);
+    order_book book("AAPL");
+    client vendor0;
+    client customer0;
+    client customer1;
+    client customer2;
 
     // Place orders.
-    customer0.bid("AAPL", 400, 100'10);
-    customer1.bid("AAPL", 300, 100'10);
-    customer2.bid("AAPL", 200, 100'10);
-    vendor0.ask("AAPL", 750, 100'10);
+    customer0.bid(book, 400, 100'10);
+    customer1.bid(book, 300, 100'10);
+    customer2.bid(book, 200, 100'10);
+    vendor0.ask(book, 750, 100'10);
 
     // Check trades have correct details.
     auto trades = book.query_trades();
@@ -129,18 +129,17 @@ TEST_F(UnitTest, LimitOrder_Ask)
 }
 TEST_F(UnitTest, MarketOrder_Bid_Fulfilled)
 {
-    order_book book;
-    book.add_stock("AAPL");
-    client vendor0(book);
-    client vendor1(book);
-    client vendor2(book);
-    client customer0(book);
+    order_book book("AAPL");
+    client vendor0;
+    client vendor1;
+    client vendor2;
+    client customer0;
 
     // Place orders.
-    vendor0.ask("AAPL", 100, 100'10);
-    vendor1.ask("AAPL", 100, 100'25);
-    vendor2.ask("AAPL", 100, 100'50);
-    customer0.bid("AAPL", 250);
+    vendor0.ask(book, 100, 100'10);
+    vendor1.ask(book, 100, 100'25);
+    vendor2.ask(book, 100, 100'50);
+    customer0.bid(book, 250);
 
     // Check trades have correct details.
     auto trades = book.query_trades();
@@ -171,18 +170,17 @@ TEST_F(UnitTest, MarketOrder_Bid_Fulfilled)
 }
 TEST_F(UnitTest, MarketOrder_Bid_Underfilled)
 {
-    order_book book;
-    book.add_stock("AAPL");
-    client vendor0(book);
-    client vendor1(book);
-    client vendor2(book);
-    client customer0(book);
+    order_book book("AAPL");
+    client vendor0;
+    client vendor1;
+    client vendor2;
+    client customer0;
 
     // Place orders.
-    vendor0.ask("AAPL", 100, 100'10);
-    vendor1.ask("AAPL", 100, 100'25);
-    vendor2.ask("AAPL", 100, 100'50);
-    customer0.bid("AAPL", 400);
+    vendor0.ask(book, 100, 100'10);
+    vendor1.ask(book, 100, 100'25);
+    vendor2.ask(book, 100, 100'50);
+    customer0.bid(book, 400);
 
     // Check trades have correct details.
     auto trades = book.query_trades();
@@ -209,18 +207,17 @@ TEST_F(UnitTest, MarketOrder_Bid_Underfilled)
 }
 TEST_F(UnitTest, MarketOrder_Ask_Fulfilled)
 {
-    order_book book;
-    book.add_stock("AAPL");
-    client customer0(book);
-    client customer1(book);
-    client customer2(book);
-    client vendor0(book);
+    order_book book("AAPL");
+    client customer0;
+    client customer1;
+    client customer2;
+    client vendor0;
 
     // Place orders.
-    customer0.bid("AAPL", 100, 100'50);
-    customer1.bid("AAPL", 100, 100'25);
-    customer2.bid("AAPL", 100, 100'10);
-    vendor0.ask("AAPL", 250);
+    customer0.bid(book, 100, 100'50);
+    customer1.bid(book, 100, 100'25);
+    customer2.bid(book, 100, 100'10);
+    vendor0.ask(book, 250);
 
     // Check trades have correct details.
     auto trades = book.query_trades();
@@ -251,18 +248,17 @@ TEST_F(UnitTest, MarketOrder_Ask_Fulfilled)
 }
 TEST_F(UnitTest, MarketOrder_Ask_Underfilled)
 {
-    order_book book;
-    book.add_stock("AAPL");
-    client customer0(book);
-    client customer1(book);
-    client customer2(book);
-    client vendor0(book);
+    order_book book("AAPL");
+    client customer0;
+    client customer1;
+    client customer2;
+    client vendor0;
 
     // Place orders.
-    customer0.bid("AAPL", 100, 100'50);
-    customer1.bid("AAPL", 100, 100'25);
-    customer2.bid("AAPL", 100, 100'10);
-    vendor0.ask("AAPL", 350);
+    customer0.bid(book, 100, 100'50);
+    customer1.bid(book, 100, 100'25);
+    customer2.bid(book, 100, 100'10);
+    vendor0.ask(book, 350);
 
     // Check trades have correct details.
     auto trades = book.query_trades();
