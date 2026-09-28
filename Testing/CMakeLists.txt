@@ -19,20 +19,16 @@ file(GLOB SOURCES
 )
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-#add_subdirectory(${PROJECT_SOURCE_DIR}/Dependencies/GTest/googletest-1.17.0 EXCLUDE_FROM_ALL)
-add_subdirectory(${PROJECT_SOURCE_DIR}/Dependencies/rapidcheck)
+add_subdirectory(${PROJECT_SOURCE_DIR}/Dependencies/GTest/googletest-1.17.0 EXCLUDE_FROM_ALL)
 
 add_executable(TestingProject ${SOURCES})
 
 include_directories(${PROJECT_SOURCE_DIR}/Dependencies/GTest/googletest-1.17.0/googletest/include)
 target_include_directories(TestingProject PRIVATE
         ${PROJECT_SOURCE_DIR}/
-        ${PROJECT_SOURCE_DIR}/Dependencies/rapidcheck/include/
-        ${PROJECT_SOURCE_DIR}/Dependencies/rapidcheck/extras/gtest/include
 )
 
-#target_link_libraries(TestingProject gtest gtest_main)
-target_link_libraries(TestingProject rapidcheck rapidcheck_gtest)
+target_link_libraries(TestingProject gtest gtest_main)
 target_link_libraries(TestingProject LibraryProject)
 
 message("debug flags: ${CMAKE_CXX_FLAGS_DEBUG}")
