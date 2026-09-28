@@ -1,5 +1,7 @@
 #pragma once
 #include "gtest/gtest.h"
+// #include "rapidcheck/gtest.h"
+// #include "rapidcheck.h"
 #include "order_book.h"
 
 class UnitTest : public ::testing::Test
@@ -283,3 +285,12 @@ TEST_F(UnitTest, MarketOrder_Ask_Underfilled)
     auto buy_orders = book.query_resting_orders<BUY>();
     ASSERT_TRUE(buy_orders.empty());
 }
+
+// RC_GTEST_PROP(UnitTest, LimitOrder_Generated, ())
+// {
+//     const uint32_t shares = *rc::gen::inRange(100, 200);
+//     const uint32_t price = *rc::gen::inRange(100'00, 200'00);
+//     const order_side side = *rc::gen::element(BUY, SELL);
+//
+//
+// }
