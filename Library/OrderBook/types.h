@@ -3,28 +3,37 @@
 #include <string>
 #include "nlohmann/json.hpp"
 
-namespace policy
-{
-    namespace time_in_force
-    {
-        struct GTC {};
-    }
-}
-
 struct stock
 {
     std::string name;
 };
 
-struct user
+enum order_policy
 {
-    uint32_t id;
+    GTC,
+    FOK
 };
 
 enum order_side
 {
     BUY,
-    SELL,
+    SELL
+};
+
+enum order_type
+{
+    LIMIT,
+    MARKET
+};
+
+template <order_type T, order_side S, order_policy P>
+struct order
+{
+    static constexpr order_type type = T;
+    static constexpr order_side side = S;
+    static constexpr order_policy policy = P;
+
+
 };
 
 template <order_side T>
@@ -61,6 +70,7 @@ struct trade
 
     uint32_t price;
     uint32_t shares;
+    long long timestamp;
     std::string stock_name;
 };
 

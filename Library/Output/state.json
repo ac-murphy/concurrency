@@ -5,10 +5,39 @@
       "id": 0,
       "merchant_id": 0,
       "price": "£100.10",
-      "recipient_id": 1,
-      "shares": 200,
+      "recipient_id": 3,
+      "shares": 100,
+      "stock_name": "AAPL"
+    },
+    {
+      "id": 1,
+      "merchant_id": 2,
+      "price": "£100.10",
+      "recipient_id": 3,
+      "shares": 100,
+      "stock_name": "AAPL"
+    },
+    {
+      "id": 2,
+      "merchant_id": 1,
+      "price": "£100.25",
+      "recipient_id": 3,
+      "shares": 50,
       "stock_name": "AAPL"
     }
   ],
-  "sell_orders": []
+  "sell_orders": [
+    [
+      10025,
+      [
+        {
+          "id": 1,
+          "price": "£100.25",
+          "shares": 50,
+          "stock_name": "AAPL",
+          "user_id": 1
+        }
+      ]
+    ]
+  ]
 }

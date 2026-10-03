@@ -17,13 +17,13 @@ public:
     }
 
 public:
-    uint32_t ask(const uint32_t& id, const uint32_t shares, const uint32_t& price = 0)
+    uint32_t ask(const uint32_t& user_id, const uint32_t shares, const uint32_t& price = 0)
     {
         if (price > 0)
         {
             limit_order<SELL> ask;
             ask.id = new_id(_sell_order_id);
-            ask.user_id = id;
+            ask.user_id = user_id;
             ask.stock_name = _stock_name;
             ask.price = price;
             ask.shares = shares;
@@ -36,7 +36,7 @@ public:
         {
             market_order<SELL> ask;
             ask.id = new_id(_sell_order_id);
-            ask.user_id = id;
+            ask.user_id = user_id;
             ask.stock_name = _stock_name;
             ask.shares = shares;
 
@@ -45,13 +45,13 @@ public:
             return ask.id;
         }
     }
-    uint32_t bid(const uint32_t& id, const uint32_t shares, const uint32_t& price = 0)
+    uint32_t bid(const uint32_t& user_id, const uint32_t shares, const uint32_t& price = 0)
     {
         if (price > 0)
         {
             limit_order<BUY> bid;
             bid.id = new_id(_buy_order_id);
-            bid.user_id = id;
+            bid.user_id = user_id;
             bid.stock_name = _stock_name;
             bid.price = price;
             bid.shares = shares;
@@ -64,7 +64,7 @@ public:
         {
             market_order<BUY> bid;
             bid.id = new_id(_buy_order_id);
-            bid.user_id = id;
+            bid.user_id = user_id;
             bid.stock_name = _stock_name;
             bid.shares = shares;
 
@@ -72,6 +72,12 @@ public:
             _matching_engine.log_state();
             return bid.id;
         }
+    }
+    bool cancel(const uint32_t& user_id, const order_side& side, const uint32_t& order_id)
+    {
+        _matching_engine.cancel(user_id, side, order_id);
+
+        return true;
     }
 
     template <order_side T>
@@ -115,6 +121,13 @@ public:
 
         return relevant_trades;
     }
+
+public:
+    uint32_t best_bid() const
+    {
+        return _matching_engine.buy_orders().begin()->first;
+    }
+    uint32_t best_ask() const { return _matching_engine.sell_orders().begin()->first; }
 
 public:
     const auto& sell_orders() const { return _matching_engine.sell_orders(); }
