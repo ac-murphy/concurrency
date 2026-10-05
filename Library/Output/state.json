@@ -1,43 +1,27 @@
 {
-  "buy_orders": [],
+  "buy_price_levels": [],
   "completed_orders": [
     {
+      "ask_id": 0,
+      "bid_id": 0,
       "id": 0,
-      "merchant_id": 0,
-      "price": "£100.10",
-      "recipient_id": 3,
-      "shares": 100,
-      "stock_name": "AAPL"
+      "price": "£100.50",
+      "shares": 100
     },
     {
+      "ask_id": 0,
+      "bid_id": 1,
       "id": 1,
-      "merchant_id": 2,
-      "price": "£100.10",
-      "recipient_id": 3,
-      "shares": 100,
-      "stock_name": "AAPL"
+      "price": "£100.25",
+      "shares": 100
     },
     {
+      "ask_id": 0,
+      "bid_id": 2,
       "id": 2,
-      "merchant_id": 1,
-      "price": "£100.25",
-      "recipient_id": 3,
-      "shares": 50,
-      "stock_name": "AAPL"
+      "price": "£100.10",
+      "shares": 100
     }
   ],
-  "sell_orders": [
-    [
-      10025,
-      [
-        {
-          "id": 1,
-          "price": "£100.25",
-          "shares": 50,
-          "stock_name": "AAPL",
-          "user_id": 1
-        }
-      ]
-    ]
-  ]
+  "sell_price_levels": []
 }

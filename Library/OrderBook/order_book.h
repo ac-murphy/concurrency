@@ -12,21 +12,18 @@ public:
     order_book(const std::string& name)
     : _stock_name(name), _matching_engine(name)
     {
-        stock stock(name);
         _matching_engine.log_state();
     }
 
 public:
-    uint32_t ask(const uint32_t& user_id, const uint32_t shares, const uint32_t& price = 0)
+    uint32_t ask(const uint32_t shares, const uint32_t& price = 0)
     {
         if (price > 0)
         {
             limit_order<SELL> ask;
             ask.id = new_id(_sell_order_id);
-            ask.user_id = user_id;
-            ask.stock_name = _stock_name;
             ask.price = price;
-            ask.shares = shares;
+            ask.quantity = shares;
 
             _matching_engine.match(ask);
             _matching_engine.log_state();
@@ -36,25 +33,21 @@ public:
         {
             market_order<SELL> ask;
             ask.id = new_id(_sell_order_id);
-            ask.user_id = user_id;
-            ask.stock_name = _stock_name;
-            ask.shares = shares;
+            ask.quantity = shares;
 
             _matching_engine.match(ask);
             _matching_engine.log_state();
             return ask.id;
         }
     }
-    uint32_t bid(const uint32_t& user_id, const uint32_t shares, const uint32_t& price = 0)
+    uint32_t bid(const uint32_t shares, const uint32_t& price = 0)
     {
         if (price > 0)
         {
             limit_order<BUY> bid;
             bid.id = new_id(_buy_order_id);
-            bid.user_id = user_id;
-            bid.stock_name = _stock_name;
             bid.price = price;
-            bid.shares = shares;
+            bid.quantity = shares;
 
             _matching_engine.match(bid);
             _matching_engine.log_state();
@@ -64,28 +57,26 @@ public:
         {
             market_order<BUY> bid;
             bid.id = new_id(_buy_order_id);
-            bid.user_id = user_id;
-            bid.stock_name = _stock_name;
-            bid.shares = shares;
+            bid.quantity = shares;
 
             _matching_engine.match(bid);
             _matching_engine.log_state();
             return bid.id;
         }
     }
-    bool cancel(const uint32_t& user_id, const order_side& side, const uint32_t& order_id)
+    bool cancel(const order_side& side, const uint32_t& order_id)
     {
-        _matching_engine.cancel(user_id, side, order_id);
+        _matching_engine.cancel(side, order_id);
 
         return true;
     }
 
     template <order_side T>
-    std::vector<limit_order<T>> query_resting_orders(std::optional<std::string> stock_name = std::nullopt,
+    std::vector<resting_order<T>> query_resting_orders(std::optional<std::string> stock_name = std::nullopt,
                                                      std::optional<uint32_t> price = std::nullopt,
                                                      std::optional<uint32_t> user_id = std::nullopt) const
     {
-        std::vector<limit_order<T>> relevant_orders;
+        std::vector<resting_order<T>> relevant_orders;
         const auto index = [&]
         {
             if constexpr      (T == BUY)  { return _matching_engine.buy_orders(); }
@@ -99,8 +90,6 @@ public:
 
             for (const auto& order : orders)
             {
-                if (user_id.has_value() && order.user_id != user_id) continue;
-
                 relevant_orders.push_back(order);
             }
         }
@@ -114,8 +103,8 @@ public:
 
         for (const trade& trade : _matching_engine.trades())
         {
-            if (merchant_id.has_value() && trade.merchant_id != merchant_id) continue;
-            if (recipient_id.has_value() && trade.recipient_id != recipient_id) continue;
+            // if (merchant_id.has_value() && trade.merchant_id != merchant_id) continue;
+            // if (recipient_id.has_value() && trade.recipient_id != recipient_id) continue;
             relevant_trades.push_back(trade);
         }
 
@@ -152,13 +141,13 @@ public:
     ~client() = default;
 
 public:
-    void ask(order_book& book, const uint32_t shares, const uint32_t& price = 0) const
+    id_type ask(order_book& book, const uint32_t shares, const uint32_t& price = 0) const
     {
-        book.ask(_id, shares, price);
+        return book.ask(shares, price);
     }
-    void bid(order_book& book, const uint32_t shares, const uint32_t& price = 0) const
+    id_type bid(order_book& book, const uint32_t shares, const uint32_t& price = 0) const
     {
-        book.bid(_id, shares, price);
+        return book.bid(shares, price);
     }
 
 public:

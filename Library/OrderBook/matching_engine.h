@@ -17,136 +17,195 @@ public:
     {}
 
 public:
-    template <typename order_type>
-    void match(order_type& order)
+    template <order_like T>
+    void match(T& order)
     {
         matching_engine::_match(order);
         matching_engine::clean_up();
     }
 
-    void cancel(const uint32_t& user_id, const order_side& side, const uint32_t& order_id)
+    void modify(const order_side& side, const id_type& order_id)
     {
-        switch (side)
+        if (side == SELL)
         {
-            case SELL:
-                for (auto& sell_orders : _sell_orders | std::views::values)
-                    for (auto& sell_order : sell_orders)
-                        if (sell_order.id == order_id)
-                        {
-                            matching_engine::remove(sell_order);
-                            return;
-                        }
-            case BUY:
-                for (auto& buy_orders : _buy_orders | std::views::values)
-                    for (auto& buy_order : buy_orders)
-                        if (buy_order.id == order_id)
-                        {
-                            matching_engine::remove(buy_order);
-                            return;
-                        }
-                break;
+
+        }
+        else
+        {
+
+        }
+    }
+
+    void cancel(const order_side& side, const id_type& order_id)
+    {
+        if (side == SELL)
+        {
+            for (auto& sell_orders : _sell_price_levels | std::views::values)
+                for (auto& sell_order : sell_orders)
+                    if (sell_order.id == order_id)
+                    {
+                        matching_engine::remove(sell_order);
+                        return;
+                    }
+        }
+        else
+        {
+            for (auto& buy_orders : _buy_price_levels | std::views::values)
+                for (auto& buy_order : buy_orders)
+                    if (buy_order.id == order_id)
+                    {
+                        matching_engine::remove(buy_order);
+                        return;
+                    }
         }
     }
 
 private:
-    void _match(limit_order<BUY>& buy_order)
+    template <incoming_order_like T>
+    requires (T::side == BUY)
+    auto find_sell_orders(const T& order)
+    {
+        std::deque<resting_order<SELL>> orders;
+    }
+
+    // todo: copies, can optimise
+    template <incoming_order_like T>
+    void make_resting_order(const T& order)
+    {
+        if constexpr (T::side == BUY)
+        {
+            resting_order<BUY> resting_buy_order;
+            resting_buy_order.id = order.id;
+            resting_buy_order.price = order.price;
+            resting_buy_order.quantity = order.quantity;
+            resting_buy_order.good_until = 0;
+
+            _buy_price_levels[order.price].push_back(resting_buy_order);
+        }
+        else
+        {
+            resting_order<SELL> resting_sell_order;
+            resting_sell_order.id = order.id;
+            resting_sell_order.price = order.price;
+            resting_sell_order.quantity = order.quantity;
+            resting_sell_order.good_until = 0;
+
+            _sell_price_levels[order.price].push_back(resting_sell_order);
+        }
+    }
+
+    template <incoming_order_like T>
+    requires (T::type == LIMIT && T::side == BUY)
+    void _match(T& limit_buy_order)
     {
         // If there are no resting sell orders with the given price, put buy order in the book.
-        if (!_sell_orders.contains(buy_order.price))
+        if (!_sell_price_levels.contains(limit_buy_order.price))
         {
-            _buy_orders[buy_order.price].push_back(buy_order);
+            if constexpr (restable_order<T>)
+            {
+                // _buy_price_levels[limit_buy_order.price].push_back(limit_buy_order);
+                matching_engine::make_resting_order(limit_buy_order);
+            }
             return;
         }
 
         // Search for an exact match (same price and shares).
-        auto& sell_orders = _sell_orders.at(buy_order.price);
-        for (limit_order<SELL>& sell_order : sell_orders)
-            if (sell_order.shares == buy_order.shares)
-                if (matching_engine::complete_trade(buy_order, sell_order))
+        auto& sell_orders = _sell_price_levels.at(limit_buy_order.price);
+        for (resting_order<SELL>& sell_order : sell_orders)
+            if (sell_order.quantity == limit_buy_order.quantity)
+                if (matching_engine::fill_order(limit_buy_order, sell_order))
                     return;
 
         // If an exact match isn't found, consume cheapest sell offers until exhausted or buy order is complete.
-        for (limit_order<SELL>& sell_order : sell_orders)
+        for (resting_order<SELL>& sell_order : sell_orders)
         {
-            matching_engine::complete_trade(buy_order, sell_order);
-            if (buy_order.shares == 0)
+            matching_engine::fill_order(limit_buy_order, sell_order);
+            if (limit_buy_order.quantity == 0)
                 return;
         }
 
         // If there are shares left over, put buy order in the book.
-        _buy_orders[buy_order.price].push_back(buy_order);
+        if constexpr (restable_order<T>)
+            // _buy_price_levels[limit_buy_order.price].push_back(limit_buy_order);
+            matching_engine::make_resting_order(limit_buy_order);
     }
-    void _match(limit_order<SELL>& sell_order)
+    template <incoming_order_like T>
+    requires (T::type == LIMIT && T::side == SELL)
+    void _match(T& limit_sell_order)
     {
         // If there are no resting buy orders with the given price, put sell order in the book.
-        if (!_buy_orders.contains(sell_order.price))
+        if (!_buy_price_levels.contains(limit_sell_order.price))
         {
-            _sell_orders[sell_order.price].push_back(sell_order);
+            if constexpr (restable_order<T>)
+            {
+                // _sell_price_levels[limit_sell_order.price].push_back(limit_sell_order);
+                matching_engine::make_resting_order(limit_sell_order);
+            }
             return;
         }
 
         // Search for an exact match (same price and shares).
-        auto& buy_orders = _buy_orders.at(sell_order.price);
-        for (limit_order<BUY>& buy_order : buy_orders)
-            if (buy_order.shares == sell_order.shares)
-                if (matching_engine::complete_trade(buy_order, sell_order))
+        auto& buy_orders = _buy_price_levels.at(limit_sell_order.price);
+        for (resting_order<BUY>& buy_order : buy_orders)
+            if (buy_order.quantity == limit_sell_order.quantity)
+                if (matching_engine::fill_order(buy_order, limit_sell_order))
                     return;
 
         // If an exact match isn't found, consume best-paying buy offers until exhausted or sell order is complete.
-        for (limit_order<BUY>& buy_order : buy_orders)
+        for (resting_order<BUY>& buy_order : buy_orders)
         {
-            matching_engine::complete_trade(buy_order, sell_order);
-            if (sell_order.shares == 0)
+            matching_engine::fill_order(buy_order, limit_sell_order);
+            if (limit_sell_order.quantity == 0)
                 return;
         }
 
         // If there are shares left over, put sell order in the book.
-        _sell_orders[sell_order.price].push_back(sell_order);
+        if constexpr (restable_order<T>)
+        // _sell_price_levels[limit_sell_order.price].push_back(limit_sell_order);
+            matching_engine::make_resting_order(limit_sell_order);
     }
-    void _match(market_order<BUY>& buy_order)
+    template <incoming_order_like T>
+    requires (T::type == MARKET && T::side == BUY)
+    void _match(T& market_buy_order)
     {
         // Iterate over resting sell orders in order of lowest ask.
-        for (auto& sell_orders: _sell_orders | std::views::values)
+        for (auto& sell_orders: _sell_price_levels | std::views::values)
         {
-            for (limit_order<SELL>& sell_order : sell_orders)
+            for (resting_order<SELL>& sell_order : sell_orders)
             {
-                if (sell_order.user_id == buy_order.user_id)
-                    continue;
-
-                matching_engine::complete_trade(buy_order, sell_order);
-                if (buy_order.shares == 0)
+                matching_engine::fill_order(market_buy_order, sell_order);
+                if (market_buy_order.quantity == 0)
                     return;
             }
         }
     }
-    void _match(market_order<SELL>& sell_order)
+    template <incoming_order_like T>
+    requires (T::type == MARKET && T::side == SELL)
+    void _match(T& market_sell_order)
     {
         // Iterate over resting sell orders in order of lowest ask.
-        for (auto& buy_orders: _buy_orders | std::views::values)
+        for (auto& buy_orders: _buy_price_levels | std::views::values)
         {
-            for (limit_order<BUY>& buy_order : buy_orders)
+            for (resting_order<BUY>& buy_order : buy_orders)
             {
-                if (buy_order.user_id == sell_order.user_id)
-                    continue;
-
-                matching_engine::complete_trade(buy_order, sell_order);
-                if (sell_order.shares == 0)
+                matching_engine::fill_order(buy_order, market_sell_order);
+                if (market_sell_order.quantity == 0)
                     return;
             }
         }
     }
 
 public:
-    const auto& sell_orders() const { return _sell_orders; }
-    const auto& buy_orders() const { return _buy_orders; }
+    const auto& sell_orders() const { return _sell_price_levels; }
+    const auto& buy_orders() const { return _buy_price_levels; }
     const auto& trades() const { return _trades; }
 
     std::string state_string() const
     {
         nlohmann::json x;
         x["completed_orders"] = _trades;
-        x["buy_orders"] = _buy_orders;
-        x["sell_orders"] = _sell_orders;
+        x["buy_price_levels"] = _buy_price_levels;
+        x["sell_price_levels"] = _sell_price_levels;
         return x.dump(2);
     }
     void log_state() const
@@ -157,128 +216,122 @@ public:
     }
 
 private:
-    bool complete_trade(limit_order<BUY>& buy_order,
-                        limit_order<SELL>& sell_order)
+    template <order_like T, order_like U>
+    requires (T::side == BUY && U::side == SELL &&
+              (resting_order_like<T> && limit_order_like<U>) ||
+              (limit_order_like<T> && resting_order_like<U>))
+    bool fill_order(T& buy_order, U& sell_order)
     {
-        if (buy_order.user_id == sell_order.user_id)
-            return false;
-
         trade trade;
         trade.id = matching_engine::new_id(_completed_trade_id);
-        trade.merchant_id = sell_order.user_id;
-        trade.recipient_id = buy_order.user_id;
+        trade.ask_id = sell_order.id;
+        trade.bid_id = buy_order.id;
         trade.price = sell_order.price;
-        trade.shares = std::min(sell_order.shares, buy_order.shares);
-        trade.stock_name = sell_order.stock_name;
+        trade.quantity = std::min(sell_order.quantity, buy_order.quantity);
 
-        buy_order.shares -= trade.shares;
-        sell_order.shares -= trade.shares;
-        if (buy_order.shares == 0) matching_engine::remove(buy_order);
-        if (sell_order.shares == 0) matching_engine::remove(sell_order);
+        buy_order.quantity -= trade.quantity;
+        sell_order.quantity -= trade.quantity;
+        if constexpr (resting_order_like<T>)
+            if (buy_order.quantity == 0) matching_engine::remove(buy_order);
+        if constexpr (resting_order_like<U>)
+            if (sell_order.quantity == 0) matching_engine::remove(sell_order);
 
-        matching_engine::complete_trade(trade);
+        matching_engine::fill_order(trade);
         return true;
     }
-    bool complete_trade(limit_order<BUY>& buy_order,
-                        market_order<SELL>& sell_order)
+    template <resting_order_like T, market_order_like U>
+    requires (T::side == BUY && U::side == SELL)
+    bool fill_order(T& buy_order, U& sell_order)
     {
-        if (buy_order.user_id == sell_order.user_id)
-            return false;
-
         trade trade;
         trade.id = matching_engine::new_id(_completed_trade_id);
-        trade.merchant_id = sell_order.user_id;
-        trade.recipient_id = buy_order.user_id;
+        trade.ask_id = sell_order.id;
+        trade.bid_id = buy_order.id;
         trade.price = buy_order.price;
-        trade.shares = std::min(sell_order.shares, buy_order.shares);
-        trade.stock_name = sell_order.stock_name;
+        trade.quantity = std::min(sell_order.quantity, buy_order.quantity);
 
-        buy_order.shares -= trade.shares;
-        sell_order.shares -= trade.shares;
-        if (buy_order.shares == 0) matching_engine::remove(buy_order);
+        buy_order.quantity -= trade.quantity;
+        sell_order.quantity -= trade.quantity;
+        if (buy_order.quantity == 0) matching_engine::remove(buy_order);
 
-        matching_engine::complete_trade(trade);
+        matching_engine::fill_order(trade);
         return true;
     }
-    bool complete_trade(market_order<BUY>& buy_order,
-                        limit_order<SELL>& sell_order)
+    template <market_order_like T, resting_order_like U>
+    requires (T::side == BUY && U::side == SELL)
+    bool fill_order(T& buy_order, U& sell_order)
     {
-        if (buy_order.user_id == sell_order.user_id)
-            return false;
-
         trade trade;
         trade.id = matching_engine::new_id(_completed_trade_id);
-        trade.merchant_id = sell_order.user_id;
-        trade.recipient_id = buy_order.user_id;
+        trade.ask_id = sell_order.id;
+        trade.bid_id = buy_order.id;
         trade.price = sell_order.price;
-        trade.shares = std::min(sell_order.shares, buy_order.shares);
-        trade.stock_name = sell_order.stock_name;
+        trade.quantity = std::min(sell_order.quantity, buy_order.quantity);
 
-        buy_order.shares -= trade.shares;
-        sell_order.shares -= trade.shares;
-        if (sell_order.shares == 0) matching_engine::remove(sell_order);
+        buy_order.quantity -= trade.quantity;
+        sell_order.quantity -= trade.quantity;
+        if (sell_order.quantity == 0) matching_engine::remove(sell_order);
 
-        matching_engine::complete_trade(trade);
+        matching_engine::fill_order(trade);
         return true;
     }
-    void complete_trade(trade& trade)
+    void fill_order(trade& trade)
     {
         trade.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
         _trades.push_back(trade);
         log_state();
     }
 
-    void remove(limit_order<BUY>& buy_order)
+    void remove(resting_order<BUY>& buy_order)
     {
-        if (!_buy_orders.contains(buy_order.price))
+        if (!_buy_price_levels.contains(buy_order.price))
             return;
 
-        auto& buy_orders = _buy_orders.at(buy_order.price);
+        auto& buy_orders = _buy_price_levels.at(buy_order.price);
         const auto it = std::ranges::find(buy_orders, buy_order);
         if (it == buy_orders.end()) return;
 
         const uint32_t price = buy_order.price;
         buy_orders.erase(it);
         if (buy_orders.empty())
-            _empty_buy_order_price_lists.push_back(price);
+            _empty_buy_order_price_levels.push_back(price);
     }
-    void remove(limit_order<SELL>& sell_order)
+    void remove(const resting_order<SELL>& sell_order)
     {
-        if (!_sell_orders.contains(sell_order.price))
+        if (!_sell_price_levels.contains(sell_order.price))
             return;
 
-        auto& sell_orders = _sell_orders.at(sell_order.price);
+        auto& sell_orders = _sell_price_levels.at(sell_order.price);
         const auto it = std::ranges::find(sell_orders, sell_order);
         if (it == sell_orders.end()) return;
 
         const uint32_t price = sell_order.price;
         sell_orders.erase(it);
         if (sell_orders.empty())
-            _empty_sell_order_price_lists.push_back(price);
+            _empty_sell_order_price_levels.push_back(price);
     }
     void clean_up()
     {
-        for (const auto& price : _empty_buy_order_price_lists)
-            _buy_orders.erase(price);
-        for (const auto& price : _empty_sell_order_price_lists)
-            _sell_orders.erase(price);
+        for (const auto& price : _empty_buy_order_price_levels)
+            _buy_price_levels.erase(price);
+        for (const auto& price : _empty_sell_order_price_levels)
+            _sell_price_levels.erase(price);
 
-        _empty_buy_order_price_lists.clear();
-        _empty_sell_order_price_lists.clear();
+        _empty_buy_order_price_levels.clear();
+        _empty_sell_order_price_levels.clear();
     }
 
 private:
     static uint32_t new_id(uint32_t& type_id) { return type_id++; }
 
 private:
-    uint32_t _completed_trade_id = 0;
-
-    std::deque<uint32_t> _empty_buy_order_price_lists;
-    std::deque<uint32_t> _empty_sell_order_price_lists;
-
     const std::string _stock_name;
 
+    std::deque<uint32_t> _empty_buy_order_price_levels;
+    std::deque<uint32_t> _empty_sell_order_price_levels;
+
+    uint32_t _completed_trade_id = 0;
     std::deque<trade> _trades;
-    std::map<uint32_t, std::deque<limit_order<BUY>>, std::greater<>> _buy_orders;
-    std::map<uint32_t, std::deque<limit_order<SELL>>, std::less<>> _sell_orders;
+    std::map<uint32_t, std::deque<resting_order<BUY>>, std::greater<>> _buy_price_levels;
+    std::map<uint32_t, std::deque<resting_order<SELL>>, std::less<>>  _sell_price_levels;
 };

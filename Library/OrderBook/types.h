@@ -3,79 +3,94 @@
 #include <string>
 #include "nlohmann/json.hpp"
 
-struct stock
-{
-    std::string name;
-};
-
-enum order_policy
-{
-    GTC,
-    FOK
-};
-
-enum order_side
-{
-    BUY,
-    SELL
-};
+using id_type = uint32_t;
+using price_type = uint32_t;
+using quantity_type = uint32_t;
+using time_type = uint32_t;
 
 enum order_type
 {
     LIMIT,
     MARKET
 };
+enum order_side
+{
+    BUY,
+    SELL
+};
+enum order_policy
+{
+    GTC,
+    FOK,
+    IOC
+};
 
 template <order_type T, order_side S, order_policy P>
-struct order
+struct incoming_order
 {
     static constexpr order_type type = T;
     static constexpr order_side side = S;
     static constexpr order_policy policy = P;
 
-
+    id_type id;
+    price_type price;
+    quantity_type quantity;
 };
 
-template <order_side T>
-struct limit_order
+template <order_side S>
+struct resting_order
 {
-    uint32_t id;
-    uint32_t user_id;
-    static constexpr order_side side = T;
+    static constexpr order_side side = S;
 
-    uint32_t price;
-    uint32_t shares;
-    std::string stock_name;
+    id_type id;
+    price_type price;
+    quantity_type quantity;
+    time_type good_until;
 };
 
-template <order_side T>
-struct market_order
-{
-    uint32_t id;
-    uint32_t user_id;
-    static constexpr order_side side = T;
+template <order_side S, order_policy P = GTC>
+using limit_order = incoming_order<LIMIT, S, P>;
 
-    uint32_t shares;
-    std::string stock_name;
-};
+template <order_side S, order_policy P = GTC>
+using market_order = incoming_order<MARKET, S, P>;
 
-template <typename T>
-concept order_like = std::same_as<T, limit_order<T::side>> || std::same_as<T, market_order<T::side>>;
+template <typename T>                                 struct order_like_trait                          : std::false_type {};
+template <order_type T, order_side S, order_policy P> struct order_like_trait<incoming_order<T, S, P>> : std::true_type  {};
+template <order_side S>                               struct order_like_trait<resting_order<S>>        : std::true_type  {};
+template <typename T> concept order_like = order_like_trait<T>::value;
+
+template <typename T>                                 struct incoming_order_like_trait                          : std::false_type {};
+template <order_type T, order_side S, order_policy P> struct incoming_order_like_trait<incoming_order<T, S, P>> : std::true_type  {};
+template <typename T> concept incoming_order_like = incoming_order_like_trait<T>::value;
+
+template <typename T> concept limit_order_like  = order_like<T> && T::type == LIMIT;
+template <typename T> concept market_order_like = order_like<T> && T::type == MARKET;
+
+template <typename T>   struct resting_order_like_trait                   : std::false_type {};
+template <order_side S> struct resting_order_like_trait<resting_order<S>> : std::true_type  {};
+template <typename T> concept resting_order_like = resting_order_like_trait<T>::value;
+
+template <typename T> concept restable_order = order_like<T> && T::policy == GTC;
+template <typename T> concept partially_fillable_order = order_like<T> && T::policy != FOK;
 
 struct trade
 {
-    uint32_t id;
-    uint32_t merchant_id;
-    uint32_t recipient_id;
-
-    uint32_t price;
-    uint32_t shares;
+    id_type id;
+    id_type ask_id;
+    id_type bid_id;
+    price_type price;
+    quantity_type quantity;
     long long timestamp;
-    std::string stock_name;
 };
 
 template <order_side T>
 bool operator==(const limit_order<T>& a, const limit_order<T>& b)
+{
+    return a.id == b.id;
+}
+
+template <order_like T>
+bool operator==(const T& a, const T& b)
 {
     return a.id == b.id;
 }
@@ -99,63 +114,62 @@ inline uint32_t price_from_string(const std::string& price)
 inline void to_json(nlohmann::json& j, const limit_order<BUY>& buy_order)
 {
     j["id"] = buy_order.id;
-    j["user_id"] = buy_order.user_id;
     j["price"] = price_to_string(buy_order.price);
-    j["shares"] = buy_order.shares;
-    j["stock_name"] = buy_order.stock_name;
+    j["shares"] = buy_order.quantity;
 }
 inline void from_json(const nlohmann::json& j, limit_order<BUY>& buy_order)
 {
     j.at("id").get_to(buy_order.id);
-    j.at("user_id").get_to(buy_order.user_id);
-    // j.at("price").get_to(buy_order.price);
     buy_order.price = price_from_string(j.at("price"));
-    j.at("shares").get_to(buy_order.shares);
-    j.at("stock_name").get_to(buy_order.stock_name);
+    j.at("shares").get_to(buy_order.quantity);
 }
 inline void to_json(nlohmann::json& j, const limit_order<SELL>& sell_order)
 {
     j["id"] = sell_order.id;
-    j["user_id"] = sell_order.user_id;
     j["price"] = price_to_string(sell_order.price);
-    j["shares"] = sell_order.shares;
-    j["stock_name"] = sell_order.stock_name;
+    j["shares"] = sell_order.quantity;
 }
 inline void from_json(const nlohmann::json& j, limit_order<SELL>& sell_order)
 {
     j.at("id").get_to(sell_order.id);
-    j.at("user_id").get_to(sell_order.user_id);
     sell_order.price = price_from_string(j.at("price"));
-    j.at("shares").get_to(sell_order.shares);
-    j.at("stock_name").get_to(sell_order.stock_name);
+    j.at("shares").get_to(sell_order.quantity);
+}
+template <resting_order_like T> void to_json(nlohmann::json& j, const T& sell_order)
+{
+    j["id"] = sell_order.id;
+    j["price"] = price_to_string(sell_order.price);
+    j["shares"] = sell_order.quantity;
+}
+template <resting_order_like T> void from_json(const nlohmann::json& j, T& sell_order)
+{
+    j.at("id").get_to(sell_order.id);
+    sell_order.price = price_from_string(j.at("price"));
+    j.at("shares").get_to(sell_order.quantity);
 }
 inline void to_json(nlohmann::json& j, const trade& completed_order)
 {
     j["id"] = completed_order.id;
-    j["merchant_id"] = completed_order.merchant_id;
-    j["recipient_id"] = completed_order.recipient_id;
+    j["ask_id"] = completed_order.ask_id;
+    j["bid_id"] = completed_order.bid_id;
     j["price"] = price_to_string(completed_order.price);
-    j["shares"] = completed_order.shares;
-    j["stock_name"] = completed_order.stock_name;
+    j["shares"] = completed_order.quantity;
 }
 inline void from_json(const nlohmann::json& j, trade& completed_order)
 {
     j.at("id").get_to(completed_order.id);
-    j.at("merchant_id").get_to(completed_order.merchant_id);
-    j.at("recipient_id").get_to(completed_order.recipient_id);
+    j.at("ask_id").get_to(completed_order.ask_id);
+    j.at("bid_id").get_to(completed_order.bid_id);
     completed_order.price = price_from_string(j.at("price"));
-    j.at("shares").get_to(completed_order.shares);
-    j.at("stock_name").get_to(completed_order.stock_name);
+    j.at("shares").get_to(completed_order.quantity);
 }
 
 inline std::ostream& operator<<(std::ostream& os, const limit_order<BUY>& bid)
 {
     os << "bid:" << std::endl
        << "\tid: " << bid.id << std::endl
-       << "\tparticipant_id: " << bid.user_id << std::endl
-       << "\tstock_name: " << bid.stock_name << std::endl
        << "\tprice: " << bid.price << std::endl
-       << "\tshares: " << bid.shares << std::endl;
+       << "\tshares: " << bid.quantity << std::endl;
 
     return os;
 }
@@ -163,10 +177,8 @@ inline std::ostream& operator<<(std::ostream& os, const limit_order<SELL>& ask)
 {
     os << "ask:" << std::endl
        << "\tid: " << ask.id << std::endl
-       << "\tparticipant_id: " << ask.user_id << std::endl
-       << "\tstock_name: " << ask.stock_name << std::endl
        << "\tprice: " << ask.price << std::endl
-       << "\tshares: " << ask.shares << std::endl;
+       << "\tshares: " << ask.quantity << std::endl;
 
     return os;
 }
