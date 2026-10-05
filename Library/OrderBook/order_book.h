@@ -16,7 +16,7 @@ public:
     }
 
 public:
-    uint32_t ask(const uint32_t shares, const uint32_t& price = 0)
+    uint32_t ask(const uint32_t shares, const uint32_t& price = 0, const order_policy& policy)
     {
         if (price > 0)
         {
@@ -141,11 +141,11 @@ public:
     ~client() = default;
 
 public:
-    id_type ask(order_book& book, const uint32_t shares, const uint32_t& price = 0) const
+    id_type ask(order_book& book, const uint32_t shares, const uint32_t& price = 0, const order_policy& policy = GTC) const
     {
         return book.ask(shares, price);
     }
-    id_type bid(order_book& book, const uint32_t shares, const uint32_t& price = 0) const
+    id_type bid(order_book& book, const uint32_t shares, const uint32_t& price = 0, const order_policy& policy = GTC) const
     {
         return book.bid(shares, price);
     }

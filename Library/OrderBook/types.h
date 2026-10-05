@@ -36,7 +36,6 @@ struct incoming_order
     price_type price;
     quantity_type quantity;
 };
-
 template <order_side S>
 struct resting_order
 {
@@ -48,9 +47,10 @@ struct resting_order
     time_type good_until;
 };
 
+// todo: make limit_order and market_order separate types to save memory
+//  as market_order doesn't specify a price.
 template <order_side S, order_policy P = GTC>
 using limit_order = incoming_order<LIMIT, S, P>;
-
 template <order_side S, order_policy P = GTC>
 using market_order = incoming_order<MARKET, S, P>;
 
@@ -63,14 +63,14 @@ template <typename T>                                 struct incoming_order_like
 template <order_type T, order_side S, order_policy P> struct incoming_order_like_trait<incoming_order<T, S, P>> : std::true_type  {};
 template <typename T> concept incoming_order_like = incoming_order_like_trait<T>::value;
 
-template <typename T> concept limit_order_like  = order_like<T> && T::type == LIMIT;
-template <typename T> concept market_order_like = order_like<T> && T::type == MARKET;
 
 template <typename T>   struct resting_order_like_trait                   : std::false_type {};
 template <order_side S> struct resting_order_like_trait<resting_order<S>> : std::true_type  {};
 template <typename T> concept resting_order_like = resting_order_like_trait<T>::value;
 
-template <typename T> concept restable_order = order_like<T> && T::policy == GTC;
+template <typename T> concept limit_order_like         = order_like<T> && T::type == LIMIT;
+template <typename T> concept market_order_like        = order_like<T> && T::type == MARKET;
+template <typename T> concept restable_order           = order_like<T> && T::policy == GTC;
 template <typename T> concept partially_fillable_order = order_like<T> && T::policy != FOK;
 
 struct trade
