@@ -36,12 +36,22 @@ public:
 
         matching_engine::_clean_up();
     }
-    void cancel(const order_side& side, const id_type& order_id)
+    bool cancel(const order_side& side, const id_type& order_id)
     {
+        bool success = false;
         if (side == BUY)
-            matching_engine::_cancel_impl(order_id, _buy_price_levels);
+            success = matching_engine::_cancel_impl(order_id, _buy_price_levels);
         if (side == SELL)
-            matching_engine::_cancel_impl(order_id, _sell_price_levels);
+            success = matching_engine::_cancel_impl(order_id, _sell_price_levels);
+
+        matching_engine::_clean_up();
+        return success;
+    }
+
+public:
+    void set_config(const matching_config& config)
+    {
+        _config = config;
     }
 
 public:
@@ -332,15 +342,17 @@ private:
     }
 
     template <typename PriceLevels>
-    void _cancel_impl(const id_type& order_id, PriceLevels& price_levels)
+    bool _cancel_impl(const id_type& order_id, PriceLevels& price_levels)
     {
         for (std::deque<resting_order>& resting_order_list : price_levels | std::views::values)
             for (resting_order& resting_order : resting_order_list)
                 if (resting_order.id == order_id)
                 {
                     matching_engine::_remove_order(resting_order);
-                    return;
+                    return true;
                 }
+
+        return false;
     }
 
     void _clean_up()
@@ -367,4 +379,6 @@ private:
     std::deque<trade> _trades;
     std::map<uint32_t, std::deque<resting_order>, std::greater<>> _buy_price_levels;
     std::map<uint32_t, std::deque<resting_order>, std::less<>>  _sell_price_levels;
+
+    matching_config _config;
 };

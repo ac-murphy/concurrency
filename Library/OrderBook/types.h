@@ -8,6 +8,8 @@ using price_type = uint32_t;
 using quantity_type = uint32_t;
 using time_type = uint32_t;
 
+constexpr id_type invalid_id = std::numeric_limits<id_type>::max();
+
 enum order_type
 {
     LIMIT,
@@ -53,7 +55,27 @@ struct trade
     quantity_type quantity;
     long long timestamp;
 };
-using price_level = std::unordered_map<id_type, resting_order>;
+template <typename Comparator>
+
+/// [[unused]]
+using price_level = std::unordered_map<id_type, resting_order, Comparator>;
+struct market_config
+{
+    price_type min_price = 0;
+    price_type max_price = std::numeric_limits<price_type>::max();
+    price_type tick_size = 1;
+
+    quantity_type min_quantity = 0;
+    quantity_type max_quantity = std::numeric_limits<quantity_type>::max();
+    quantity_type lot_size = 1;
+};
+struct matching_config
+{
+    bool market_orders_allowed = true;
+    bool cross_orders_allowed = false;
+    bool fractional_quantity_allowed = false;
+};
+
 
 template <typename T>
 concept order_like = std::same_as<T, resting_order> || std::same_as<T, incoming_order>;
@@ -74,16 +96,14 @@ inline bool is_restable_order(const incoming_order& order)
 {
     return order.policy == order_policy::GTC;
 }
-template <order_like T>
-bool is_fixed_price_order(const T& order)
+template <order_like T> bool is_fixed_price_order(const T& order)
 {
     if constexpr (is_resting_order<T>)
         return true;
     else
         return order.type == LIMIT;
 }
-template <order_like T>
-bool is_variable_price_order(const T& order)
+template <order_like T> bool is_variable_price_order(const T& order)
 {
     return !is_fixed_price_order(order);
 }

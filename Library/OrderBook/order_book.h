@@ -16,8 +16,11 @@ public:
     }
 
 public:
-    uint32_t ask(const quantity_type& quantity, const price_type& price = 0, const order_policy& policy = GTC)
+    id_type ask(const quantity_type& quantity, const price_type& price = 0, const order_policy& policy = GTC)
     {
+        if (!order_book::order_ok(quantity, price, policy))
+            return invalid_id;
+
         incoming_order ask;
         ask.type = price == 0 ? MARKET : LIMIT;
         ask.side = SELL;
@@ -30,13 +33,16 @@ public:
         _matching_engine.log_state();
         return ask.id;
     }
-    uint32_t bid(const uint32_t shares, const uint32_t& price = 0, const order_policy& policy = GTC)
+    id_type bid(const quantity_type& quantity, const price_type& price = 0, const order_policy& policy = GTC)
     {
+        if (!order_book::order_ok(quantity, price, policy))
+            return invalid_id;
+
         incoming_order bid;
         bid.type = price == 0 ? MARKET : LIMIT;
         bid.side = BUY;
         bid.policy = policy;
-        bid.quantity = shares;
+        bid.quantity = quantity;
         bid.price = price;
         bid.id = new_id(_buy_order_id);
 
@@ -44,11 +50,14 @@ public:
         _matching_engine.log_state();
         return bid.id;
     }
-    bool cancel(const order_side& side, const uint32_t& order_id)
+    bool cancel(const order_side& side, const id_type& order_id)
     {
-        _matching_engine.cancel(side, order_id);
+        if (order_id == invalid_id)
+            return false;
 
-        return true;
+        bool success = _matching_engine.cancel(side, order_id);
+        _matching_engine.log_state();
+        return success;
     }
 
     std::vector<resting_order> query_resting_buy_orders(std::optional<uint32_t> price = std::nullopt) const
@@ -66,7 +75,6 @@ public:
 
         return relevant;
     }
-
     std::vector<resting_order> query_resting_sell_orders(std::optional<uint32_t> price = std::nullopt) const
     {
         std::vector<resting_order> relevant;
@@ -82,7 +90,6 @@ public:
 
         return relevant;
     }
-
     std::vector<trade> query_trades(std::optional<uint32_t> merchant_id = std::nullopt,
                                     std::optional<uint32_t> recipient_id = std::nullopt) const
     {
@@ -99,6 +106,16 @@ public:
     }
 
 public:
+    void set_market_config(const market_config& config)
+    {
+        _config = config;
+    }
+    void set_matching_config(const matching_config& config)
+    {
+        _matching_engine.set_config(config);
+    }
+
+public:
     uint32_t best_bid() const
     {
         return _matching_engine.buy_orders().begin()->first;
@@ -111,6 +128,15 @@ public:
     const auto& trades() const { return _matching_engine.trades(); }
 
 private:
+    bool order_ok(const quantity_type& quantity, const price_type& price, const order_policy& policy)
+    {
+        if (quantity < _config.min_quantity || quantity > _config.max_quantity) return false;
+        if (price < _config.min_price       || price > _config.max_price)       return false;
+
+        return true;
+    }
+
+private:
     static uint32_t new_id(uint32_t& type_id) { return type_id++; }
 
 private:
@@ -118,6 +144,7 @@ private:
     uint32_t _buy_order_id = 0;
 
     std::string _stock_name;
+    market_config _config;
     matching_engine _matching_engine;
 };
 
@@ -143,6 +170,14 @@ public:
     id_type market_ask(order_book& book, const uint32_t& shares, const order_policy& policy = GTC) const
     {
         return book.ask(shares, 0, policy);
+    }
+    bool cancel_bid(order_book& book, const id_type& id)
+    {
+        return book.cancel(order_side::BUY, id);
+    }
+    bool cancel_ask(order_book& book, const id_type& id)
+    {
+        return book.cancel(order_side::SELL, id);
     }
 
 public:

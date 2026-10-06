@@ -1,27 +1,5 @@
 {
   "buy_price_levels": [],
-  "completed_orders": [
-    {
-      "ask_id": 0,
-      "bid_id": 0,
-      "id": 0,
-      "price": "£100.10",
-      "shares": 400
-    },
-    {
-      "ask_id": 0,
-      "bid_id": 1,
-      "id": 1,
-      "price": "£100.10",
-      "shares": 300
-    },
-    {
-      "ask_id": 0,
-      "bid_id": 2,
-      "id": 2,
-      "price": "£100.10",
-      "shares": 200
-    }
-  ],
+  "completed_orders": [],
   "sell_price_levels": []
 }
