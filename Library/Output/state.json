@@ -5,22 +5,22 @@
       "ask_id": 0,
       "bid_id": 0,
       "id": 0,
-      "price": "£100.50",
-      "shares": 100
+      "price": "£100.10",
+      "shares": 400
     },
     {
       "ask_id": 0,
       "bid_id": 1,
       "id": 1,
-      "price": "£100.25",
-      "shares": 100
+      "price": "£100.10",
+      "shares": 300
     },
     {
       "ask_id": 0,
       "bid_id": 2,
       "id": 2,
       "price": "£100.10",
-      "shares": 100
+      "shares": 200
     }
   ],
   "sell_price_levels": []

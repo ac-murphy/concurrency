@@ -16,53 +16,33 @@ public:
     }
 
 public:
-    uint32_t ask(const uint32_t shares, const uint32_t& price = 0, const order_policy& policy)
+    uint32_t ask(const quantity_type& quantity, const price_type& price = 0, const order_policy& policy = GTC)
     {
-        if (price > 0)
-        {
-            limit_order<SELL> ask;
-            ask.id = new_id(_sell_order_id);
-            ask.price = price;
-            ask.quantity = shares;
+        incoming_order ask;
+        ask.type = price == 0 ? MARKET : LIMIT;
+        ask.side = SELL;
+        ask.policy = policy;
+        ask.quantity = quantity;
+        ask.price = price;
+        ask.id = new_id(_sell_order_id);
 
-            _matching_engine.match(ask);
-            _matching_engine.log_state();
-            return ask.id;
-        }
-        else
-        {
-            market_order<SELL> ask;
-            ask.id = new_id(_sell_order_id);
-            ask.quantity = shares;
-
-            _matching_engine.match(ask);
-            _matching_engine.log_state();
-            return ask.id;
-        }
+        _matching_engine.match(ask);
+        _matching_engine.log_state();
+        return ask.id;
     }
-    uint32_t bid(const uint32_t shares, const uint32_t& price = 0)
+    uint32_t bid(const uint32_t shares, const uint32_t& price = 0, const order_policy& policy = GTC)
     {
-        if (price > 0)
-        {
-            limit_order<BUY> bid;
-            bid.id = new_id(_buy_order_id);
-            bid.price = price;
-            bid.quantity = shares;
+        incoming_order bid;
+        bid.type = price == 0 ? MARKET : LIMIT;
+        bid.side = BUY;
+        bid.policy = policy;
+        bid.quantity = shares;
+        bid.price = price;
+        bid.id = new_id(_buy_order_id);
 
-            _matching_engine.match(bid);
-            _matching_engine.log_state();
-            return bid.id;
-        }
-        else
-        {
-            market_order<BUY> bid;
-            bid.id = new_id(_buy_order_id);
-            bid.quantity = shares;
-
-            _matching_engine.match(bid);
-            _matching_engine.log_state();
-            return bid.id;
-        }
+        _matching_engine.match(bid);
+        _matching_engine.log_state();
+        return bid.id;
     }
     bool cancel(const order_side& side, const uint32_t& order_id)
     {
@@ -71,31 +51,38 @@ public:
         return true;
     }
 
-    template <order_side T>
-    std::vector<resting_order<T>> query_resting_orders(std::optional<std::string> stock_name = std::nullopt,
-                                                     std::optional<uint32_t> price = std::nullopt,
-                                                     std::optional<uint32_t> user_id = std::nullopt) const
+    std::vector<resting_order> query_resting_buy_orders(std::optional<uint32_t> price = std::nullopt) const
     {
-        std::vector<resting_order<T>> relevant_orders;
-        const auto index = [&]
-        {
-            if constexpr      (T == BUY)  { return _matching_engine.buy_orders(); }
-            else if constexpr (T == SELL) { return _matching_engine.sell_orders(); }
-            else { throw std::logic_error("unknown order type"); }
-        }();
-
-        for (const auto& [price_, orders] : index)
+        std::vector<resting_order> relevant;
+        for (const auto& [price_, orders] : _matching_engine.buy_orders())
         {
             if (price.has_value() && price_ != price) continue;
 
             for (const auto& order : orders)
             {
-                relevant_orders.push_back(order);
+                relevant.push_back(order);
             }
         }
 
-        return relevant_orders;
+        return relevant;
     }
+
+    std::vector<resting_order> query_resting_sell_orders(std::optional<uint32_t> price = std::nullopt) const
+    {
+        std::vector<resting_order> relevant;
+        for (const auto& [price_, orders] : _matching_engine.sell_orders())
+        {
+            if (price.has_value() && price_ != price) continue;
+
+            for (const auto& order : orders)
+            {
+                relevant.push_back(order);
+            }
+        }
+
+        return relevant;
+    }
+
     std::vector<trade> query_trades(std::optional<uint32_t> merchant_id = std::nullopt,
                                     std::optional<uint32_t> recipient_id = std::nullopt) const
     {
@@ -141,13 +128,21 @@ public:
     ~client() = default;
 
 public:
-    id_type ask(order_book& book, const uint32_t shares, const uint32_t& price = 0, const order_policy& policy = GTC) const
+    id_type limit_bid(order_book& book, const uint32_t& shares, const uint32_t& price, const order_policy& policy = GTC) const
     {
-        return book.ask(shares, price);
+        return book.bid(shares, price, policy);
     }
-    id_type bid(order_book& book, const uint32_t shares, const uint32_t& price = 0, const order_policy& policy = GTC) const
+    id_type limit_ask(order_book& book, const uint32_t& shares, const uint32_t& price, const order_policy& policy = GTC) const
     {
-        return book.bid(shares, price);
+        return book.ask(shares, price, policy);
+    }
+    id_type market_bid(order_book& book, const uint32_t& shares, const order_policy& policy = GTC) const
+    {
+        return book.bid(shares, 0, policy);
+    }
+    id_type market_ask(order_book& book, const uint32_t& shares, const order_policy& policy = GTC) const
+    {
+        return book.ask(shares, 0, policy);
     }
 
 public:
