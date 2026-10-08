@@ -1,6 +1,4 @@
-import pathlib
 from pathlib import Path
-from matplotlib.animation import FuncAnimation
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -8,7 +6,6 @@ import pandas as pd
 import numpy as np
 import argparse
 import json
-import sys
 
 matplotlib.use("QtAgg")
 
@@ -53,7 +50,6 @@ def graph_1d(input_path: Path):
 
     plt.plot(x_values, y_values)
 
-
 @register
 def graph_1d_anim(input_path: Path):
     t_values = np.array(load_data(from_folder=input_path, filename='t_values', n_cols=1,             dtype=np.float32))
@@ -64,11 +60,15 @@ def graph_1d_anim(input_path: Path):
     X = len(u_values)
     print(t_values.shape, x_values.shape, u_values.shape)
 
-    u_min = np.min(u_values)
-    u_max = np.max(u_values)
+    u_min = np.nanmin(u_values)
+    u_max = np.nanmax(u_values)
 
     fig, ax = plt.subplots()
     line, = ax.plot(x_values, u_values[0, :])
+
+    print(f'nan count={np.isnan(u_values).sum()}')
+    print(f'nan indices={np.where(np.isnan(u_values))}')
+
     ax.set_ylim(u_min, u_max)
 
     def update(n):
@@ -95,6 +95,27 @@ def graph_1d_anim(input_path: Path):
     # )
 
     fig.canvas.mpl_connect('key_press_event', on_key)
+
+    plt.show()
+
+@register
+def graph_2d(input_path: Path):
+    x_values = np.array(load_data(from_folder=input_path, filename='x_values', n_cols=1, dtype=np.float32))
+    y_values = np.array(load_data(from_folder=input_path, filename='y_values', n_cols=1, dtype=np.float32))
+    u_values =          load_data(from_folder=input_path, filename='z_values', n_cols=len(x_values), dtype=np.float32)
+
+    metadata: dict = load_data(from_folder=input_path, filename='metadata')
+    X, Y = np.meshgrid(x_values, y_values)
+
+    print(X.shape, Y.shape, u_values.shape)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(X, Y, u_values, cmap='viridis')
+
+    ax.set_xlabel(metadata['x_label'])
+    ax.set_ylabel(metadata['y_label'])
+    ax.set_zlabel(metadata['z_label'])
 
     plt.show()
 

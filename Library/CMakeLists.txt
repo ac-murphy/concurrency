@@ -17,13 +17,10 @@ set(CMAKE_SHARED_LINKER_FLAGS_DEBUG   "/MANIFEST /NXCOMPAT /DYNAMICBASE /DEBUG:F
 file(GLOB_RECURSE SOURCES "${PROJECT_SOURCE_DIR}/*.h" "${PROJECT_SOURCE_DIR}/*.cpp")
 list(FILTER SOURCES EXCLUDE REGEX "${PROJECT_SOURCE_DIR}/Dependencies")  # <- where libraries go
 
-add_library(LibraryProject STATIC ${SOURCES}
-        OrderBookNew/types.h
-        OrderBookNew/order_book.h
-        OrderBookNew/matching_engine.h)
+add_library(LibraryProject STATIC ${SOURCES})
 
 target_include_directories(LibraryProject PUBLIC
-        ${PROJECT_SOURCE_DIR}/OrderBook
+        ${PROJECT_SOURCE_DIR}/
         ${PROJECT_SOURCE_DIR}/Dependencies/Json/include
 )
 

@@ -15,24 +15,29 @@ message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 # gtest.
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 file(GLOB SOURCES
-        ${PROJECT_SOURCE_DIR}/UnitTest.cpp
+        ${PROJECT_SOURCE_DIR}/UnitTests.cpp
 )
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_subdirectory(${PROJECT_SOURCE_DIR}/Dependencies/GTest/googletest-1.17.0 EXCLUDE_FROM_ALL)
 
 add_executable(TestingProject ${SOURCES}
-        Dependencies/vis/visualise.h)
+        Dependencies/vis/visualise.h
+        GreeksUnitTest.h)
 
 include_directories(${PROJECT_SOURCE_DIR}/Dependencies/GTest/googletest-1.17.0/googletest/include)
 target_include_directories(TestingProject PRIVATE
         ${PROJECT_SOURCE_DIR}/
         ${PROJECT_SOURCE_DIR}/Dependencies/
         ${PROJECT_SOURCE_DIR}/Dependencies/vis
+        ${PROJECT_SOURCE_DIR}/Dependencies/Json/include
+        ${PROJECT_SOURCE_DIR}/Dependencies/Json/include/nlohmann
 )
 
-target_compile_definitions(TestingProject PRIVATE
+target_compile_definitions(TestingProject PUBLIC
+        SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         TEST_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/TestData/"
+        TEST_DEPENDENCIES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Dependencies/"
 )
 
 target_link_libraries(TestingProject gtest gtest_main)
