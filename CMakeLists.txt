@@ -6,3 +6,4 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 
 add_subdirectory(Library)
 add_subdirectory(Testing)
+add_subdirectory(Benchmarking)

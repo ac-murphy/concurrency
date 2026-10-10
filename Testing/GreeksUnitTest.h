@@ -17,20 +17,16 @@ TEST_F(GreeksUnitTest, TMP)
 
     black_scholes::config config;
     config.maxmium_stock_price = 1.5f;
-    config.time_step = 0.0001f;
-    config.stock_price_step = 0.01f;
+    config.time_step = 0.001f;
+    config.stock_price_step = 0.05f;
 
     const black_scholes::solution solution =
-        black_scholes::explicit_scheme_solver(input, config);
-
+        black_scholes::implicit_scheme_solver(input, config);
     const black_scholes::solution expected_solution =
         black_scholes::closed_form_solver(input, config);
-
     std::vector<float> difference;
     for (size_t i = 0; i < solution.option_price.size(); ++i)
-    {
         difference.push_back(solution.option_price[i] - expected_solution.option_price[i]);
-    }
 
     visualise vis;
     vis.init();

@@ -22,6 +22,7 @@ add_library(LibraryProject STATIC ${SOURCES})
 target_include_directories(LibraryProject PUBLIC
         ${PROJECT_SOURCE_DIR}/
         ${PROJECT_SOURCE_DIR}/Dependencies/Json/include
+        ${PROJECT_SOURCE_DIR}/Dependencies/Eigen/eigen-5.0.0/Eigen
 )
 
 target_compile_definitions(LibraryProject PUBLIC

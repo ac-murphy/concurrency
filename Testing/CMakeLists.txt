@@ -21,9 +21,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_subdirectory(${PROJECT_SOURCE_DIR}/Dependencies/GTest/googletest-1.17.0 EXCLUDE_FROM_ALL)
 
-add_executable(TestingProject ${SOURCES}
-        Dependencies/vis/visualise.h
-        GreeksUnitTest.h)
+add_executable(TestingProject ${SOURCES})
 
 include_directories(${PROJECT_SOURCE_DIR}/Dependencies/GTest/googletest-1.17.0/googletest/include)
 target_include_directories(TestingProject PRIVATE
@@ -31,6 +29,7 @@ target_include_directories(TestingProject PRIVATE
         ${PROJECT_SOURCE_DIR}/Dependencies/
         ${PROJECT_SOURCE_DIR}/Dependencies/vis
         ${PROJECT_SOURCE_DIR}/Dependencies/Json/include
+        ${PROJECT_SOURCE_DIR}/Dependencies/Json/include/nlohmann
         ${PROJECT_SOURCE_DIR}/Dependencies/Json/include/nlohmann
 )
 
