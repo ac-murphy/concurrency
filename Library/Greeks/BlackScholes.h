@@ -28,9 +28,13 @@ namespace black_scholes
     };
     struct solution
     {
-        std::vector<float> option_price;
-        std::vector<float> time;
-        std::vector<float> stock_price;
+        Eigen::MatrixXf option_price;
+        Eigen::VectorXf time;
+        Eigen::VectorXf stock_price;
+
+        solution(const size_t& N, const size_t& I)
+        : option_price(N, I), time(N), stock_price(I)
+        {}
     };
 
     inline float closed_form_eq(const black_scholes::input& input,
@@ -79,14 +83,14 @@ namespace black_scholes
             ++I;
 
         // Calculate values.
-        black_scholes::solution solution;
+        black_scholes::solution solution(N, I);
         for (size_t n = 0; n < N; ++n)
             for (size_t i = 0; i < I; ++i)
-                solution.option_price.push_back(black_scholes::closed_form_eq(input, i * ds, T - n * dt));
+                solution.option_price(n, i) = black_scholes::closed_form_eq(input, i * ds, T - n * dt);
 
         // Populate axes.
-        for (size_t n = 0; n < N; ++n) solution.time.push_back(n * dt);
-        for (size_t i = 0; i < I; ++i) solution.stock_price.push_back(i * ds);
+        for (size_t n = 0; n < N; ++n) solution.time(n) = n * dt;
+        for (size_t i = 0; i < I; ++i) solution.stock_price(i) = i * ds;
 
         return solution;
     }
@@ -116,37 +120,37 @@ namespace black_scholes
             ++I;
 
         // Value matrix.
-        std::vector V(N, std::vector(I, 0.0f));
+        // std::vector V(N, std::vector(I, 0.0f));
+        black_scholes::solution solution(N, I);
+        auto& V = solution.option_price;
 
         // Initial condition:
         //  V(0, S) = max(S - K, 0)
         for (size_t i = 0; i < I; ++i)
-            V[0][i] = std::max(i * ds - K, 0.0f);
+            V(0, i) = std::max(i * ds - K, 0.0f);
 
         // Boundary conditions:
         //  V(t, 0) = 0
         //  V(t, S_max) = S_max - K*exp(-r*t) - note: instead we are using the exact solution at this boundary.
         for (size_t n = 1; n < N; ++n)
         {
-            V[n][0] = 0.0f;
-            V[n][I - 1] = black_scholes::closed_form_eq(input, S_max, T - n * dt);
+            V(n, 0) = 0.0f;
+            V(n, I - 1) = black_scholes::closed_form_eq(input, S_max, T - n * dt);
         }
 
         // Calculate values.
         for (size_t n = 0; n < N - 1; ++n)
             for (size_t i = 1; i < I - 1; ++i)
-                V[n + 1][i] = V[n][i] + dt *
+                V(n + 1, i) = V(n, i) + dt *
                               (0.5f * s*s * (i * ds)*(i * ds) * ((
-                               V[n][i + 1] - 2.0f * V[n][i] + V[n][i - 1]) / (ds * ds)) +
-                               r * (i * ds) * ((V[n][i + 1] - V[n][i - 1]) / (2.0f * ds)) -
-                               r * V[n][i]);
+                               V(n, i + 1) - 2.0f * V(n, i) + V(n, i - 1)) / (ds * ds)) +
+                               r * (i * ds) * ((V(n, i + 1) - V(n, i - 1)) / (2.0f * ds)) -
+                               r * V(n, i));
 
         // Populate axes.
-        black_scholes::solution solution;
-        for (const auto& row : V)
-            solution.option_price.insert(solution.option_price.end(), row.begin(), row.end());
-        for (size_t n = 0; n < N; ++n) solution.time.push_back(n * dt);
-        for (size_t i = 0; i < I; ++i) solution.stock_price.push_back(i * ds);
+        //  todo: could substitute "i * ds" for value in solution.stock_price in above calculation.
+        for (size_t n = 0; n < N; ++n) solution.time(n) = n * dt;
+        for (size_t i = 0; i < I; ++i) solution.stock_price(i) = i * ds;
 
         return solution;
     }
@@ -176,7 +180,10 @@ namespace black_scholes
             ++I;
 
         // Value matrix.
-        Eigen::MatrixXf V(N, I);
+        black_scholes::solution solution(N, I);
+        auto& V = solution.option_price;
+
+        // todo: possibly redundant.
         V.setZero();
 
         // Coefficients.
@@ -232,13 +239,12 @@ namespace black_scholes
         }
 
         // Populate axes.
-        black_scholes::solution solution;
-        for (size_t n = 0; n < N; ++n)
-            for (size_t i = 0; i < I; ++i)
-                solution.option_price.push_back(V(n, i));
+        // for (size_t n = 0; n < N; ++n)
+        //     for (size_t i = 0; i < I; ++i)
+        //         solution.option_price.push_back(V(n, i));
 
-        for (size_t n = 0; n < N; ++n) solution.time.push_back(n * dt);
-        for (size_t i = 0; i < I; ++i) solution.stock_price.push_back(i * ds);
+        for (size_t n = 0; n < N; ++n) solution.time(n) = n * dt;
+        for (size_t i = 0; i < I; ++i) solution.stock_price(i) = i * ds;
 
         return solution;
     }

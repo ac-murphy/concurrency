@@ -57,6 +57,15 @@ namespace binary_io
         file.close();
     }
 
+    template <typename T>
+    void write_T(const std::filesystem::path& path, const T* data, const size_t count)
+    {
+        std::ofstream file(path, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(data), count * sizeof(T));
+        file.flush();
+        file.close();
+    }
+
     inline void write_bool(const std::filesystem::path& path, const std::vector<bool>& data)
     {
         std::vector<uint8_t> unpacked_bool_list;

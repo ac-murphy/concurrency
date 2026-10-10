@@ -102,7 +102,7 @@ def graph_1d_anim(input_path: Path):
 def graph_2d(input_path: Path):
     x_values = np.array(load_data(from_folder=input_path, filename='x_values', n_cols=1, dtype=np.float32))
     y_values = np.array(load_data(from_folder=input_path, filename='y_values', n_cols=1, dtype=np.float32))
-    u_values =          load_data(from_folder=input_path, filename='z_values', n_cols=len(x_values), dtype=np.float32)
+    u_values =          load_data(from_folder=input_path, filename='z_values', n_cols=len(y_values), dtype=np.float32).T
 
     metadata: dict = load_data(from_folder=input_path, filename='metadata')
     X, Y = np.meshgrid(x_values, y_values)

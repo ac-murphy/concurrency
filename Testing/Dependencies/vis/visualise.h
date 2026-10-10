@@ -7,6 +7,7 @@
 
 #include "BIN.h"
 #include "JSON.h"
+#include "Eigen"
 
 class visualise
 {
@@ -60,18 +61,18 @@ public:
         visualise::graph_1d_anim(u_values_flattened, t_values, x_values);
     }
 
-    void graph_2d(const std::vector<float>& x_values,
-                  const std::vector<float>& y_values,
-                  const std::vector<float>& z_values_flattened,
+    void graph_2d(const Eigen::VectorXf& x_values,
+                  const Eigen::VectorXf& y_values,
+                  const Eigen::MatrixXf& z_values,
                   const std::string& x_label,
                   const std::string& y_label,
                   const std::string& z_label)
     {
         std::filesystem::path dir = _output_dir/std::to_string(_op_counter++);
         std::filesystem::create_directories(dir);
-        binary_io::write_T(dir/"x_values.bin", x_values);
-        binary_io::write_T(dir/"y_values.bin", y_values);
-        binary_io::write_T(dir/"z_values.bin", z_values_flattened);
+        binary_io::write_T(dir/"x_values.bin", x_values.data(), x_values.size());
+        binary_io::write_T(dir/"y_values.bin", y_values.data(), y_values.size());
+        binary_io::write_T(dir/"z_values.bin", z_values.data(), z_values.size());
 
         nlohmann::json metadata;
         metadata["type"] = "graph_2d";

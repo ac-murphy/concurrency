@@ -24,9 +24,10 @@ TEST_F(GreeksUnitTest, TMP)
         black_scholes::implicit_scheme_solver(input, config);
     const black_scholes::solution expected_solution =
         black_scholes::closed_form_solver(input, config);
-    std::vector<float> difference;
+
+    Eigen::VectorXf difference(solution.option_price.size());
     for (size_t i = 0; i < solution.option_price.size(); ++i)
-        difference.push_back(solution.option_price[i] - expected_solution.option_price[i]);
+        difference.data()[i] = solution.option_price.data()[i] - expected_solution.option_price.data()[i];
 
     visualise vis;
     vis.init();
