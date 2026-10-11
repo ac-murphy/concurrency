@@ -10,14 +10,11 @@ namespace greeks
         // Solver parameters.
         const float& ds = config.stock_price_step;
 
-        // Output.
-        std::vector<float> delta_values;
-
         // Variables.
         const size_t N = solution.time.size();
         const size_t I = solution.stock_price.size();
+        const Eigen::MatrixXf& V = solution.option_price;
         Eigen::MatrixXf D(N, I);
-        Eigen::Map<const Eigen::MatrixXf> V(solution.option_price.data(), N, I);
 
         // Compute delta.
         for (size_t n = 0; n < N; ++n)
@@ -43,14 +40,11 @@ namespace greeks
         const float& ds = config.stock_price_step;
         const float ds2 = ds * ds;
 
-        // Output.
-        std::vector<float> delta_values;
-
         // Variables.
         const size_t N = solution.time.size();
         const size_t I = solution.stock_price.size();
+        const Eigen::MatrixXf& V = solution.option_price;
         Eigen::MatrixXf G(N, I);
-        Eigen::Map<const Eigen::MatrixXf> V(solution.option_price.data(), N, I);
 
         // Compute gamma.
         for (size_t n = 0; n < N; ++n)
@@ -67,6 +61,5 @@ namespace greeks
         }
 
         return G;
-
     }
 }
