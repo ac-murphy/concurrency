@@ -8,7 +8,9 @@ using price_type = uint32_t;
 using quantity_type = uint32_t;
 using time_type = uint32_t;
 
-constexpr id_type invalid_id = std::numeric_limits<id_type>::max();
+constexpr id_type    invalid_id = std::numeric_limits<id_type>::max();
+constexpr price_type invalid_price = std::numeric_limits<price_type>::max();
+constexpr price_type invalid_quantity = std::numeric_limits<quantity_type>::max();
 
 enum order_type
 {

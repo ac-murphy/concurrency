@@ -116,11 +116,8 @@ public:
     }
 
 public:
-    uint32_t best_bid() const
-    {
-        return _matching_engine.buy_orders().begin()->first;
-    }
-    uint32_t best_ask() const { return _matching_engine.sell_orders().begin()->first; }
+    uint32_t best_bid() const { return _matching_engine.buy_orders().empty()  ? invalid_price :  _matching_engine.buy_orders().begin()->first; }
+    uint32_t best_ask() const { return _matching_engine.sell_orders().empty() ? invalid_price : _matching_engine.sell_orders().begin()->first; }
 
 public:
     const auto& sell_orders() const { return _matching_engine.sell_orders(); }

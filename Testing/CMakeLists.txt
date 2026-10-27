@@ -20,17 +20,18 @@ file(GLOB SOURCES
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_subdirectory(${PROJECT_SOURCE_DIR}/Dependencies/GTest/googletest-1.17.0 EXCLUDE_FROM_ALL)
+add_subdirectory(${PROJECT_SOURCE_DIR}/Dependencies/Visualise)
 
-add_executable(TestingProject ${SOURCES})
+add_executable(TestingProject ${SOURCES}
+        OrderBookSimulation.h)
 
 include_directories(${PROJECT_SOURCE_DIR}/Dependencies/GTest/googletest-1.17.0/googletest/include)
 target_include_directories(TestingProject PRIVATE
         ${PROJECT_SOURCE_DIR}/
         ${PROJECT_SOURCE_DIR}/Dependencies/
-        ${PROJECT_SOURCE_DIR}/Dependencies/vis
         ${PROJECT_SOURCE_DIR}/Dependencies/Json/include
         ${PROJECT_SOURCE_DIR}/Dependencies/Json/include/nlohmann
-        ${PROJECT_SOURCE_DIR}/Dependencies/Json/include/nlohmann
+        ${PROJECT_SOURCE_DIR}/Dependencies/Visualise/Visualise
 )
 
 target_compile_definitions(TestingProject PUBLIC
@@ -41,6 +42,7 @@ target_compile_definitions(TestingProject PUBLIC
 
 target_link_libraries(TestingProject gtest gtest_main)
 target_link_libraries(TestingProject LibraryProject)
+target_link_libraries(TestingProject Visualise)
 
 message("debug flags: ${CMAKE_CXX_FLAGS_DEBUG}")
 message("release flags: ${CMAKE_CXX_FLAGS_RELEASE}")
