@@ -3,6 +3,8 @@
 #include <filesystem>
 #include <fstream>
 #include <ranges>
+
+#include "Tracy.hpp"
 #include "types.h"
 #include "nlohmann/json.hpp"
 
@@ -10,7 +12,10 @@ class matching_engine
 {
 public:
     matching_engine() = delete;
-    ~matching_engine() = default;
+    ~matching_engine()
+    {
+        _log.join();
+    }
 
     matching_engine(const std::string& stock_name)
     : _stock_name(stock_name)
@@ -19,6 +24,9 @@ public:
 public:
     void match(incoming_order& order)
     {
+#if TRACY_ENABLE == 1
+        ZoneScopedN("match");
+#endif
         if (order.type == LIMIT)
         {
             if (order.side == BUY)
@@ -53,6 +61,18 @@ public:
     {
         _config = config;
     }
+    void set_log_output_path(const std::filesystem::path& path)
+    {
+        _log.set_output_path(path);
+    }
+    void start_log()
+    {
+        _log.start();
+    }
+    void flush_log(const bool& yield = false)
+    {
+        _log.flush(yield);
+    }
 
 public:
     const auto& sell_orders() const { return _sell_price_levels; }
@@ -78,9 +98,24 @@ private:
     template <order_like T, order_like U>
     uint32_t _evaluate_trade_price(const T& buy_order, const U& sell_order)
     {
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_evaluate_trade_price");
+#endif
+        // if (is_fixed_price_order(buy_order) &&
+        //     is_fixed_price_order(sell_order))
+        //     return std::min(buy_order.price, sell_order.price);
+
+        // If both orders are fixed-price, the price of the resting order is the one used.
         if (is_fixed_price_order(buy_order) &&
             is_fixed_price_order(sell_order))
-            return std::min(buy_order.price, sell_order.price);
+        {
+            if constexpr (is_resting_order<T>)
+                return buy_order.price;
+            else if constexpr (is_resting_order<U>)
+                return sell_order.price;
+            else
+                throw std::runtime_error("matching_engine::_evaluate_trade_price \"logic error\"");
+        }
 
         if (is_fixed_price_order(buy_order) &&
             is_variable_price_order(sell_order))
@@ -90,16 +125,28 @@ private:
             is_fixed_price_order(sell_order))
             return sell_order.price;
 
-        return std::numeric_limits<uint32_t>::max();
+        return invalid_price;
     }
     template <order_like T, order_like U>
     uint32_t _evaluate_trade_quantity(const T& buy_order, const U& sell_order)
     {
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_evaluate_trade_quantity");
+#endif
         return std::min(buy_order.quantity, sell_order.quantity);
+    }
+
+    template <order_like T, order_like U>
+    void _match_ok(const T& buy_order, const U& sell_order)
+    {
+
     }
 
     void _make_resting_order(const incoming_order& incoming_order)
     {
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_make_resting_order");
+#endif
         resting_order resting_order;
         resting_order.side = incoming_order.side;
         resting_order.quantity = incoming_order.quantity;
@@ -115,14 +162,13 @@ private:
             _sell_price_levels[incoming_order.price].push_back(resting_order);
     }
 
+    /// Note: <buy_order> MUST be on the left, and <sell_order> MUST be on the right.
     template <order_like T, order_like U>
     void _fill_order(T& buy_order, U& sell_order)
     {
-        if (!(buy_order.side == order_side::BUY && sell_order.side == order_side::SELL))
-        {
-            std::cout << "hello'";
-        }
-
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_fill_order");
+#endif
         trade trade;
         trade.id = matching_engine::_new_id(_completed_trade_id);
         trade.ask_id = sell_order.id;
@@ -130,34 +176,49 @@ private:
         trade.price = matching_engine::_evaluate_trade_price(buy_order, sell_order);
         trade.quantity = matching_engine::_evaluate_trade_quantity(buy_order, sell_order);
 
+        {
+#if TRACY_ENABLE == 1
+            ZoneScopedN("timestamp");
+#endif
+            auto now = std::chrono::steady_clock::now();
+            auto nanoseconds = static_cast<time_type>(std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count());
+            trade.timestamp = nanoseconds;
+        }
+
         buy_order.quantity -= trade.quantity;
         sell_order.quantity -= trade.quantity;
         if constexpr (is_resting_order<T>)
             if (buy_order.quantity == 0)
+            {
+#if TRACY_ENABLE == 1
+                ZoneScopedN("remove buy order");
+#endif
                 matching_engine::_remove_order(buy_order);
+            }
         if constexpr (is_resting_order<U>)
             if (sell_order.quantity == 0)
+            {
+#if TRACY_ENABLE == 1
+                ZoneScopedN("remove sell order");
+#endif
                 matching_engine::_remove_order(sell_order);
+            }
 
         matching_engine::_complete_trade(trade);
     }
     void _complete_trade(trade& trade)
     {
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_complete_trade");
+#endif
         trade.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
-        _trades.push_back(trade);
-        log_state();
+        _log.save(trade);
     }
     void _match_limit_buy_order(incoming_order& limit_buy_order)
     {
-        // If there are no resting sell orders with the given price, put buy order in the book.
-        if (!_sell_price_levels.contains(limit_buy_order.price))
-        {
-            if (is_restable_order(limit_buy_order))
-                matching_engine::_make_resting_order(limit_buy_order);
-
-            return;
-        }
-
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_match_limit_buy_order");
+#endif
         // Find relevant orders (by index) and check quantity when necessary.
         bool sufficient_quantity;
         auto sell_order_pointers = matching_engine::_find_orders(limit_buy_order, sufficient_quantity);
@@ -180,15 +241,9 @@ private:
     }
     void _match_limit_sell_order(incoming_order& limit_sell_order)
     {
-        // If there are no resting buy orders with the given price, put sell order in the book.
-        if (!_buy_price_levels.contains(limit_sell_order.price))
-        {
-            if (is_restable_order(limit_sell_order))
-                matching_engine::_make_resting_order(limit_sell_order);
-
-            return;
-        }
-
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_match_limit_sell_order");
+#endif
         // Find relevant orders (by index) and check quantity when necessary.
         bool sufficient_quantity;
         auto buy_order_pointers = matching_engine::_find_orders(limit_sell_order, sufficient_quantity);
@@ -208,29 +263,11 @@ private:
         if (is_restable_order(limit_sell_order))
             matching_engine::_make_resting_order(limit_sell_order);
     }
-
-    /* void _match_market_order_impl(incoming_order& incoming_order)
-    {
-        // Find relevant orders (by index) and check quantity when necessary.
-        bool sufficient_quantity;
-        auto order_pointers = matching_engine::_find_orders(incoming_order, sufficient_quantity);
-        if (!is_partially_fillable_order(incoming_order))
-            if (!sufficient_quantity)
-                return;
-
-        // Iterate over resting sell orders in order of lowest ask.
-        for (resting_order* order_ptr : order_pointers)
-        {
-            if (incoming_order.side == BUY)
-                matching_engine::_fill_order(incoming_order, *order_ptr);
-            if (incoming_order.side == SELL)
-                matching_engine::_fill_order(*order_ptr, incoming_order);
-            if (incoming_order.quantity == 0)
-                return;
-        }
-    } */
     void _match_market_buy_order(incoming_order& market_buy_order)
     {
+#if TRACY_ENABLE == 1
+    ZoneScopedN("_match_market_buy_order");
+#endif
         // Find relevant orders (by index) and check quantity when necessary.
         bool sufficient_quantity;
         auto sell_order_pointers = matching_engine::_find_orders(market_buy_order, sufficient_quantity);
@@ -248,6 +285,9 @@ private:
     }
     void _match_market_sell_order(incoming_order& market_sell_order)
     {
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_match_market_sell_order");
+#endif
         // Find relevant orders (by index) and check quantity when necessary.
         bool sufficient_quantity;
         auto buy_order_pointers = matching_engine::_find_orders(market_sell_order, sufficient_quantity);
@@ -267,32 +307,38 @@ private:
     template <typename PriceLevels>
     auto _find_orders_impl(const incoming_order& incoming_order,
                            PriceLevels& price_levels,
-                           std::deque<resting_order*>& relevant_orders,
+                           std::vector<resting_order*>& relevant_orders,
                            bool& has_sufficient_quantity) const
     {
         int32_t remaining_qty = incoming_order.quantity;
 
-        if (incoming_order.type == LIMIT)
-            for (resting_order& resting_order : price_levels.at(incoming_order.price))
+        for (auto& [price, price_level] : price_levels)
+        {
+#if TRACY_ENABLE == 1
+      ZoneScopedN("search price level");
+#endif
+            if (incoming_order.type == LIMIT)
             {
+                if (incoming_order.side == SELL && price < incoming_order.price) break;
+                if (incoming_order.side == BUY && price > incoming_order.price)  break;
+            }
+
+            for (resting_order& resting_order : price_level)
+            {
+#if TRACY_ENABLE == 1
+                ZoneScopedN("check order");
+#endif
                 relevant_orders.push_back(&resting_order);
                 remaining_qty -= resting_order.quantity;
-                if (remaining_qty < 0)
-                    break;
-            }
-        if (incoming_order.type == MARKET)
-        {
-            for (std::deque<resting_order>& price_level : price_levels | std::views::values)
-                for (resting_order& resting_order : price_level)
+                if (remaining_qty <= 0)
                 {
-                    relevant_orders.push_back(&resting_order);
-                    remaining_qty -= resting_order.quantity;
-                    if (remaining_qty == 0)
-                        break;
+                    has_sufficient_quantity = true;
+                    return relevant_orders;
                 }
+            }
         }
 
-        has_sufficient_quantity = remaining_qty < 0;
+        has_sufficient_quantity = remaining_qty <= 0;
         return relevant_orders;
     }
 
@@ -303,10 +349,14 @@ private:
     /// @param has_sufficient_quantity flag that signals whether the orders found have
     ///                                quantity equal to or in excess of the incoming order
     /// @return flat list of pointers to sell/buy orders
-    std::deque<resting_order*> _find_orders(const incoming_order& incoming_order,
+    std::vector<resting_order*> _find_orders(const incoming_order& incoming_order,
                                             bool& has_sufficient_quantity)
     {
-        std::deque<resting_order*> resting_orders;
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_find_orders");
+#endif
+        std::vector<resting_order*> resting_orders;
+        resting_orders.reserve(10);
 
         if (incoming_order.side == BUY)
             matching_engine::_find_orders_impl(incoming_order, _sell_price_levels, resting_orders, has_sufficient_quantity);
@@ -379,6 +429,7 @@ private:
     std::deque<trade> _trades;
     std::map<uint32_t, std::deque<resting_order>, std::greater<>> _buy_price_levels;
     std::map<uint32_t, std::deque<resting_order>, std::less<>>  _sell_price_levels;
+    event_log<trade, 1'000, 100> _log;
 
     matching_config _config;
 };

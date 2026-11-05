@@ -58,7 +58,7 @@ TEST_F(GreeksUnitTest, TMP)
         plot.y_values = solution.time;
         plot.z_values = solution.option_price;
         plot.data_storage_order = vis::storage_order::column_major;
-        vis.add_plot(plot);
+        vis.add(plot);
     }
     vis.end_frame();
 
@@ -86,9 +86,9 @@ TEST_F(GreeksUnitTest, TMP)
         plot_V1.x_values = stock_price;
         plot_V1.y_values = option_price.row(0);
 
-        vis.add_plot(plot_V0);
-        vis.add_plot(plot_V0_5);
-        vis.add_plot(plot_V1);
+        vis.add(plot_V0);
+        vis.add(plot_V0_5);
+        vis.add(plot_V1);
     }
     vis.end_frame();
 
@@ -126,7 +126,7 @@ TEST_F(GreeksUnitTest, OptionPrice_StockPrice_ClosedForm)
         plot.z_values = closed_form_solution.option_price;
         plot.label = "$V(t, S)$";
 
-        vis.add_plot(plot);
+        vis.add(plot);
     }
     vis.end_frame();
     vis.begin_frame("option price vs stock price");
@@ -149,9 +149,9 @@ TEST_F(GreeksUnitTest, OptionPrice_StockPrice_ClosedForm)
         plot_t1000.x_values = closed_form_solution.stock_price;
         plot_t1000.y_values = closed_form_solution.option_price.row(1000);
 
-        vis.add_plot(plot_t0);
-        vis.add_plot(plot_t500);
-        vis.add_plot(plot_t1000);
+        vis.add(plot_t0);
+        vis.add(plot_t500);
+        vis.add(plot_t1000);
     }
     vis.end_frame();
     vis.run();

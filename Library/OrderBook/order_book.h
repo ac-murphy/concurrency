@@ -1,53 +1,41 @@
 #pragma once
 #include <string>
 #include "types.h"
+#include "event_log.h"
 #include "matching_engine.h"
 
 class order_book
 {
 public:
     order_book() = delete;
-    ~order_book() = default;
+    ~order_book()
+    {
+        _log.join();
+    }
 
     order_book(const std::string& name)
-    : _stock_name(name), _matching_engine(name)
+    : _stock_name(name), _matching_engine(name), _output_dir(std::filesystem::path(OUTPUT_DIR)/"books"/name)
     {
-        _matching_engine.log_state();
+        _log.set_output_path(_output_dir/"orders.bin");
+        _matching_engine.set_log_output_path(_output_dir/"trades.bin");
+        order_book::start_log();
     }
 
 public:
-    id_type ask(const quantity_type& quantity, const price_type& price = 0, const order_policy& policy = GTC)
+    id_type ask(const id_type& user_id, const quantity_type& quantity, const price_type& price = 0, const order_policy& policy = GTC)
     {
-        if (!order_book::order_ok(quantity, price, policy))
-            return invalid_id;
-
-        incoming_order ask;
-        ask.type = price == 0 ? MARKET : LIMIT;
-        ask.side = SELL;
-        ask.policy = policy;
-        ask.quantity = quantity;
-        ask.price = price;
-        ask.id = new_id(_sell_order_id);
-
+        auto ask = _make_order(SELL, user_id, quantity, price, policy);
         _matching_engine.match(ask);
-        _matching_engine.log_state();
+        _log.save(ask);
+
         return ask.id;
     }
-    id_type bid(const quantity_type& quantity, const price_type& price = 0, const order_policy& policy = GTC)
+    id_type bid(const id_type& user_id, const quantity_type& quantity, const price_type& price = 0, const order_policy& policy = GTC)
     {
-        if (!order_book::order_ok(quantity, price, policy))
-            return invalid_id;
-
-        incoming_order bid;
-        bid.type = price == 0 ? MARKET : LIMIT;
-        bid.side = BUY;
-        bid.policy = policy;
-        bid.quantity = quantity;
-        bid.price = price;
-        bid.id = new_id(_buy_order_id);
-
+        auto bid = _make_order(BUY, user_id, quantity, price, policy);
         _matching_engine.match(bid);
-        _matching_engine.log_state();
+        _log.save(bid);
+
         return bid.id;
     }
     bool cancel(const order_side& side, const id_type& order_id)
@@ -55,13 +43,31 @@ public:
         if (order_id == invalid_id)
             return false;
 
-        bool success = _matching_engine.cancel(side, order_id);
-        _matching_engine.log_state();
+        const bool success = _matching_engine.cancel(side, order_id);
         return success;
     }
 
-    std::vector<resting_order> query_resting_buy_orders(std::optional<uint32_t> price = std::nullopt) const
+    size_t resting_buy_order_count() const
     {
+        size_t count = 0;
+        for (const auto& orders : _matching_engine.buy_orders() | std::views::values)
+            count += orders.size();
+
+        return count;
+    }
+    size_t resting_sell_order_count() const
+    {
+        size_t count = 0;
+        for (const auto& orders : _matching_engine.sell_orders() | std::views::values)
+            count += orders.size();
+
+        return count;
+    }
+    std::vector<resting_order> current_buy_orders(std::optional<uint32_t> price = std::nullopt) const
+    {
+#if TRACY_ENABLE == 1
+       ZoneScopedN("query buy orders");
+#endif
         std::vector<resting_order> relevant;
         for (const auto& [price_, orders] : _matching_engine.buy_orders())
         {
@@ -75,8 +81,11 @@ public:
 
         return relevant;
     }
-    std::vector<resting_order> query_resting_sell_orders(std::optional<uint32_t> price = std::nullopt) const
+    std::vector<resting_order> current_sell_orders(std::optional<uint32_t> price = std::nullopt) const
     {
+#if TRACY_ENABLE == 1
+        ZoneScopedN("query sell orders");
+#endif
         std::vector<resting_order> relevant;
         for (const auto& [price_, orders] : _matching_engine.sell_orders())
         {
@@ -93,16 +102,13 @@ public:
     std::vector<trade> query_trades(std::optional<uint32_t> merchant_id = std::nullopt,
                                     std::optional<uint32_t> recipient_id = std::nullopt) const
     {
-        std::vector<trade> relevant_trades;
-
-        for (const trade& trade : _matching_engine.trades())
-        {
-            // if (merchant_id.has_value() && trade.merchant_id != merchant_id) continue;
-            // if (recipient_id.has_value() && trade.recipient_id != recipient_id) continue;
-            relevant_trades.push_back(trade);
-        }
-
-        return relevant_trades;
+        return load_trades();
+        // std::vector<trade> relevant_trades;
+        //
+        // for (const trade& trade : _matching_engine.trades())
+        //     relevant_trades.push_back(trade);
+        //
+        // return relevant_trades;
     }
 
 public:
@@ -114,31 +120,126 @@ public:
     {
         _matching_engine.set_config(config);
     }
-
-public:
-    uint32_t best_bid() const { return _matching_engine.buy_orders().empty()  ? invalid_price :  _matching_engine.buy_orders().begin()->first; }
-    uint32_t best_ask() const { return _matching_engine.sell_orders().empty() ? invalid_price : _matching_engine.sell_orders().begin()->first; }
-
-public:
-    const auto& sell_orders() const { return _matching_engine.sell_orders(); }
-    const auto& buy_orders() const { return _matching_engine.buy_orders(); }
-    const auto& trades() const { return _matching_engine.trades(); }
-
-private:
-    bool order_ok(const quantity_type& quantity, const price_type& price, const order_policy& policy)
+    void start_log()
     {
-        if (quantity < _config.min_quantity || quantity > _config.max_quantity) return false;
-        if (price < _config.min_price       || price > _config.max_price)       return false;
+        _log.start();
+        _matching_engine.start_log();
+    }
+    void flush_log(const bool& yield = false)
+    {
+        _log.flush(yield);
+        _matching_engine.flush_log(yield);
+    }
 
-        return true;
+public:
+    price_type best_bid() const { return _matching_engine.buy_orders().empty()  ? invalid_price :  _matching_engine.buy_orders().begin()->first; }
+    price_type best_ask() const { return _matching_engine.sell_orders().empty() ? invalid_price : _matching_engine.sell_orders().begin()->first; }
+
+public:
+    const auto& sell_order_price_levels() const
+    {
+        return _matching_engine.sell_orders();
+    }
+    const auto& buy_order_price_levels() const
+    {
+        return _matching_engine.buy_orders();
+    }
+    const auto& trades() const
+    {
+        return _matching_engine.trades();
+    }
+    std::vector<trade> load_trades() const
+    {
+        return order_book::_load_impl<trade>("trades.bin");
+    }
+    std::vector<incoming_order> load_buy_orders() const
+    {
+        return order_book::_load_orders_impl("orders.bin", BUY);
+    }
+    std::vector<incoming_order> load_sell_orders() const
+    {
+        return order_book::_load_orders_impl("orders.bin", SELL);
     }
 
 private:
-    static uint32_t new_id(uint32_t& type_id) { return type_id++; }
+    std::vector<incoming_order> _load_orders_impl(const std::string& filename, const order_side& side) const
+    {
+        std::vector<incoming_order> orders = order_book::_load_impl<incoming_order>(filename);
+        std::vector<incoming_order> correct_side_orders;
+        correct_side_orders.reserve(orders.size());
+        for (auto&& order : orders)
+            if (order.side == side)
+                correct_side_orders.push_back(std::move(order));
+
+        return correct_side_orders;
+    }
+    template <typename T>
+    std::vector<T> _load_impl(const std::string& filename) const
+    {
+        const std::filesystem::path path(_output_dir/filename);
+        if (!std::filesystem::exists(path))
+            return {};
+
+        const auto file_size = std::filesystem::file_size(path);
+        constexpr auto obj_size = sizeof(T);
+        if (file_size % obj_size != 0)
+            return {};
+
+        std::ifstream in(path, std::ios::binary | std::ios::in);
+        if (!in)
+            return {};
+
+        const auto count = file_size / obj_size;
+        std::vector<T> list(count);
+        in.read(reinterpret_cast<char*>(list.data()), file_size);
+
+        return list;
+    }
+
+private:
+    bool _order_ok(const incoming_order& order) const
+    {
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_order_ok");
+#endif
+        if (order.quantity < _config.min_quantity || order.quantity > _config.max_quantity) return false;
+        if (order.price < _config.min_price       || order.price > _config.max_price)       return false;
+        if (order.quantity % _config.lot_size != 0)                                         return false;
+        if (order.price % _config.tick_size != 0)                                           return false;
+
+        return true;
+    }
+    incoming_order _make_order(const order_side& side, const id_type& user_id, const quantity_type& quantity, const price_type& price, const order_policy& policy)
+    {
+        incoming_order order;
+        order.type = price == 0 ? MARKET : LIMIT;
+        order.side = side;
+        order.policy = policy;
+        order.quantity = quantity;
+        order.price = price;
+        order.id = _new_id(_order_id);
+        order.user_id = user_id;
+        order.timestamp = order_book::_new_timestamp();
+
+        if (!order_book::_order_ok(order))
+            return invalid_order;
+        else
+            return order;
+    }
+
+private:
+    static id_type _new_id(id_type& type_id) { return type_id++; }
+    static time_type _new_timestamp()
+    {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
 
 private:
     uint32_t _sell_order_id = 0;
     uint32_t _buy_order_id = 0;
+    id_type _order_id = 0;
+    std::filesystem::path _output_dir;
+    event_log<incoming_order, 1'000, 100> _log;
 
     std::string _stock_name;
     market_config _config;
@@ -154,19 +255,19 @@ public:
 public:
     id_type limit_bid(order_book& book, const uint32_t& shares, const uint32_t& price, const order_policy& policy = GTC) const
     {
-        return book.bid(shares, price, policy);
+        return book.bid(_id, shares, price, policy);
     }
     id_type limit_ask(order_book& book, const uint32_t& shares, const uint32_t& price, const order_policy& policy = GTC) const
     {
-        return book.ask(shares, price, policy);
+        return book.ask(_id, shares, price, policy);
     }
     id_type market_bid(order_book& book, const uint32_t& shares, const order_policy& policy = GTC) const
     {
-        return book.bid(shares, 0, policy);
+        return book.bid(_id, shares, 0, policy);
     }
     id_type market_ask(order_book& book, const uint32_t& shares, const order_policy& policy = GTC) const
     {
-        return book.ask(shares, 0, policy);
+        return book.ask(_id, shares, 0, policy);
     }
     bool cancel_bid(order_book& book, const id_type& id)
     {
@@ -186,3 +287,25 @@ private:
 private:
     uint32_t _id;
 };
+
+template <typename T>
+std::vector<T> load(const std::filesystem::path& path)
+{
+    if (!std::filesystem::exists(path))
+        return {};
+
+    const auto file_size = std::filesystem::file_size(path);
+    constexpr auto obj_size = sizeof(T);
+    if (file_size % obj_size != 0)
+        return {};
+
+    std::ifstream in(path, std::ios::binary | std::ios::in);
+    if (!in)
+        return {};
+
+    const auto count = file_size / obj_size;
+    std::vector<T> list(count);
+    in.read(reinterpret_cast<char*>(list.data()), file_size);
+
+    return list;
+}

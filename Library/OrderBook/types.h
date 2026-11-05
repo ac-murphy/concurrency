@@ -6,11 +6,7 @@
 using id_type = uint32_t;
 using price_type = uint32_t;
 using quantity_type = uint32_t;
-using time_type = uint32_t;
-
-constexpr id_type    invalid_id = std::numeric_limits<id_type>::max();
-constexpr price_type invalid_price = std::numeric_limits<price_type>::max();
-constexpr price_type invalid_quantity = std::numeric_limits<quantity_type>::max();
+using time_type = uint64_t;
 
 enum order_type
 {
@@ -35,17 +31,20 @@ struct incoming_order
     order_side side;
     order_policy policy;
 
-    quantity_type quantity;
-    price_type price;
     id_type id;
+    id_type user_id;
+    quantity_type quantity;
+    time_type timestamp;
+    price_type price;
 };
 struct resting_order
 {
     order_side side;
 
+    id_type id;
+    id_type user_id;
     quantity_type quantity;
     price_type price;
-    id_type id;
     time_type good_until;
 };
 struct trade
@@ -55,11 +54,9 @@ struct trade
     id_type bid_id;
     price_type price;
     quantity_type quantity;
-    long long timestamp;
+    time_type timestamp;
 };
 template <typename Comparator>
-
-/// [[unused]]
 using price_level = std::unordered_map<id_type, resting_order, Comparator>;
 struct market_config
 {
@@ -75,9 +72,20 @@ struct matching_config
 {
     bool market_orders_allowed = true;
     bool cross_orders_allowed = false;
-    bool fractional_quantity_allowed = false;
 };
 
+constexpr id_type        invalid_id = std::numeric_limits<id_type>::max();
+constexpr price_type     invalid_price = std::numeric_limits<price_type>::max();
+constexpr quantity_type  invalid_quantity = std::numeric_limits<quantity_type>::max();
+constexpr time_type      invalid_time = std::numeric_limits<time_type>::max();
+constexpr incoming_order invalid_order = { .type = LIMIT,
+                                           .side = BUY,
+                                           .policy = GTC,
+                                           .id = invalid_id,
+                                           .user_id = invalid_id,
+                                           .quantity = invalid_quantity,
+                                           .timestamp = invalid_time,
+                                           .price = invalid_price };
 
 template <typename T>
 concept order_like = std::same_as<T, resting_order> || std::same_as<T, incoming_order>;
