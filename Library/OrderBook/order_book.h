@@ -3,6 +3,7 @@
 #include "types.h"
 #include "event_log.h"
 #include "matching_engine.h"
+#include "util.h"
 
 class order_book
 {
@@ -25,7 +26,12 @@ public:
     id_type ask(const id_type& user_id, const quantity_type& quantity, const price_type& price = 0, const order_policy& policy = GTC)
     {
         auto ask = _make_order(SELL, user_id, quantity, price, policy);
-        _matching_engine.match(ask);
+
+        // Only pass order to matching engine if valid.
+        if (order_book::_order_valid(ask))
+            _matching_engine.match(ask);
+
+        // Save regardless of validity.
         _log.save(ask);
 
         return ask.id;
@@ -33,7 +39,12 @@ public:
     id_type bid(const id_type& user_id, const quantity_type& quantity, const price_type& price = 0, const order_policy& policy = GTC)
     {
         auto bid = _make_order(BUY, user_id, quantity, price, policy);
-        _matching_engine.match(bid);
+
+        // Only pass order to matching engine if valid.
+        if (order_book::_order_valid(bid))
+            _matching_engine.match(bid);
+
+        // Save regardless of validity.
         _log.save(bid);
 
         return bid.id;
@@ -202,15 +213,51 @@ private:
 #if TRACY_ENABLE == 1
         ZoneScopedN("_order_ok");
 #endif
-        if (order.quantity < _config.min_quantity || order.quantity > _config.max_quantity) return false;
-        if (order.price < _config.min_price       || order.price > _config.max_price)       return false;
-        if (order.quantity % _config.lot_size != 0)                                         return false;
-        if (order.price % _config.tick_size != 0)                                           return false;
+        if (order.quantity < _config.min_quantity || order.quantity > _config.max_quantity)
+        {
+            debug_print(std::format("order_book::_order_ok \"failed; invalid order quantity (qty: {}, min_ok: {}, max_ok: {})\"",
+                                    order.quantity, _config.min_quantity, _config.max_quantity));
+            return false;
+        }
+        if (order.price < _config.min_price       || order.price > _config.max_price)
+        {
+            debug_print(std::format("order_book::_order_ok \"failed; invalid order price (price: {}, min_ok: {}, max_ok: {})\"",
+                                    order.price, _config.min_price, _config.max_price));
+            return false;
+        }
+        if (order.quantity % _config.lot_size != 0)
+        {
+            debug_print(std::format("order_book::_order_ok \"failed; invalid order quantity (qty: {}, lot_size: {})\"",
+                                    order.quantity, _config.lot_size));
+            return false;
+        }
+        if (order.price % _config.tick_size != 0)
+        {
+            debug_print(std::format("order_book::_order_ok \"failed; invalid order price (qty: {}, tick_size: {})\"",
+                                    order.quantity, _config.tick_size));
+            return false;
+        }
+
+        return true;
+    }
+    bool _order_valid(const incoming_order& order) const
+    {
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_order_valid");
+#endif
+        if (order.id        == invalid_id)       return false;
+        if (order.user_id   == invalid_id)       return false;
+        if (order.quantity  == invalid_quantity) return false;
+        if (order.price     == invalid_price)    return false;
+        if (order.timestamp == invalid_time)     return false;
 
         return true;
     }
     incoming_order _make_order(const order_side& side, const id_type& user_id, const quantity_type& quantity, const price_type& price, const order_policy& policy)
     {
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_make_order");
+#endif
         incoming_order order;
         order.type = price == 0 ? MARKET : LIMIT;
         order.side = side;
@@ -222,7 +269,12 @@ private:
         order.timestamp = order_book::_new_timestamp();
 
         if (!order_book::_order_ok(order))
+        {
+#if TRACY_ENABLE == 1
+            ZoneScopedN("return invalid order");
+#endif
             return invalid_order;
+        }
         else
             return order;
     }

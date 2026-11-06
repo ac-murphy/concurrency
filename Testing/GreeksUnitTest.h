@@ -10,22 +10,22 @@ class GreeksUnitTest : public ::testing::Test
 {
 public:
     inline static black_scholes::config config = {
-        /* maximum stock price */ 1.5f,
-        /* stock_price_step */    0.05f,
-        /* time_step */           0.001f
+        .maximum_stock_price = 1.5f,
+        .stock_price_step    = 0.05f,
+        .time_step           = 0.001f
     };
     inline static black_scholes::input input = {
-        /* strike price */  1.0f,
-        /* duration */      1.0f,
-        /* volatility */    0.5f,
-        /* interest rate */ 0.01f
+        .strike_price  = 1.0f,
+        .duration      = 1.0f,
+        .volatility    = 0.5f,
+        .interest_rate = 0.01f
     };
     inline static black_scholes::solution closed_form_solution = black_scholes::closed_form_solver(input, config);
     inline static black_scholes::solution implicit_solution    = black_scholes::explicit_scheme_solver(input, config);
     inline static black_scholes::solution explicit_solution    = black_scholes::implicit_scheme_solver(input, config);
 };
 
-TEST_F(GreeksUnitTest, TMP)
+TEST_F(GreeksUnitTest, TMP2)
 {
     black_scholes::input input;
     input.strike_price = 1.0f;
@@ -34,25 +34,37 @@ TEST_F(GreeksUnitTest, TMP)
     input.interest_rate = 0.01f;
 
     black_scholes::config config;
-    config.maxmium_stock_price = 1.5f;
+    config.maximum_stock_price = 2.0f;
+    config.minimum_stock_price = 0.8f;
     config.time_step = 0.001f;
     config.stock_price_step = 0.05f;
 
     // Solutions for V (option price).
-    const black_scholes::solution solution = black_scholes::implicit_scheme_solver(input, config);
+    const black_scholes::solution solution = black_scholes::explicit_scheme_solver(input, config);
     const black_scholes::solution expected_solution = black_scholes::closed_form_solver(input, config);
     const Eigen::MatrixXf difference = solution.option_price - expected_solution.option_price;
 
     // Derived values (Greeks).
-    const Eigen::MatrixXf delta = greeks::delta(config, solution);
-    const Eigen::MatrixXf gamma = greeks::gamma(config, solution);
+    // const Eigen::MatrixXf delta = greeks::delta(config, solution);
+    // const Eigen::MatrixXf gamma = greeks::gamma(config, solution);
 
     vis::visualise_plotting vis;
 
-    vis.begin_frame("implicit scheme solver");
+    vis.begin_frame("closed form solver");
     {
         vis.set_axis_labels("stock_price", "time", "option_price");
-        // vis::plot_3D<float> plot{solution.stock_price, solution.time, solution.option_price};
+        vis::plot_3D<float> plot;
+        plot.x_values = expected_solution.stock_price;
+        plot.y_values = expected_solution.time;
+        plot.z_values = expected_solution.option_price;
+        plot.data_storage_order = vis::storage_order::column_major;
+        vis.add(plot);
+    }
+    vis.end_frame();
+
+    vis.begin_frame("explicit scheme solver");
+    {
+        vis.set_axis_labels("stock_price", "time", "option_price");
         vis::plot_3D<float> plot;
         plot.x_values = solution.stock_price;
         plot.y_values = solution.time;
@@ -62,7 +74,19 @@ TEST_F(GreeksUnitTest, TMP)
     }
     vis.end_frame();
 
-    vis.begin_frame("$\\Delta$, $\\Gamma$ and $V$ against $S$");
+    vis.begin_frame("solver difference");
+    {
+        vis.set_axis_labels("stock_price", "time", "option_price");
+        vis::plot_3D<float> plot;
+        plot.x_values = expected_solution.stock_price;
+        plot.y_values = expected_solution.time;
+        plot.z_values = difference;
+        plot.data_storage_order = vis::storage_order::column_major;
+        vis.add(plot);
+    }
+    vis.end_frame();
+
+    /* vis.begin_frame("$\\Delta$, $\\Gamma$ and $V$ against $S$");
     {
         vis.set_axis_labels("stock price (£)", "option price (£)");
         vis.set_legend_visible(true);
@@ -90,18 +114,9 @@ TEST_F(GreeksUnitTest, TMP)
         vis.add(plot_V0_5);
         vis.add(plot_V1);
     }
-    vis.end_frame();
+    vis.end_frame(); */
 
-    /* vis.begin_frame("closed form solver");
-    {
-        vis.set_axis_labels("stock_price", "time", "option_price");
-        vis::plot_3D<float> plot(expected_solution.stock_price, expected_solution.time, expected_solution.option_price);
-        plot.data_storage_order = vis::storage_order::column_major;
-        vis.add_plot(plot);
-    }
-    vis.end_frame();
-
-    vis.begin_frame("solver difference");
+    /* vis.begin_frame("solver difference");
     {
         vis.set_axis_labels("stock_price", "time", "option_price_difference");
         vis::plot_3D<float> plot(expected_solution.stock_price, expected_solution.time, difference);

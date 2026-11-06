@@ -1071,4 +1071,130 @@ TEST_F(UnitTest, CrossOrderDisabled)
     ASSERT_EQ(asks[0].quantity, 350);
     ASSERT_EQ(asks[0].price, 100'50);
 }
+TEST_F(UnitTest, CrossOrderEnabled)
+{
+    matching_config matching_config;
+    matching_config.cross_orders_allowed = true;
+
+    order_book AAPL("AAPL");
+    AAPL.set_matching_config(matching_config);
+
+    client user0;
+
+    // Place orders.
+    auto bid0 = user0.limit_bid(AAPL, 100, 100'50, GTC);
+    auto ask0 = user0.limit_ask(AAPL, 350, 100'50, GTC);
+    AAPL.flush_log(true);
+
+    // Check trades have correct details.
+    auto trades = AAPL.query_trades();
+    ASSERT_EQ(trades.size(), 1);
+    ASSERT_EQ(trades[0].ask_id, ask0);
+    ASSERT_EQ(trades[0].bid_id, bid0);
+    ASSERT_EQ(trades[0].quantity, 100);
+    ASSERT_EQ(trades[0].price, 100'50);
+
+    // Ensure no bids remain.
+    auto bids = AAPL.current_buy_orders();
+    ASSERT_EQ(bids.size(), 0);
+
+    // Ensure ask is resting on book.
+    auto asks = AAPL.current_sell_orders();
+    ASSERT_EQ(asks.size(), 1);
+    ASSERT_EQ(asks[0].id, ask0);
+    ASSERT_EQ(asks[0].user_id, user0.id());
+    ASSERT_EQ(asks[0].quantity, 250);
+    ASSERT_EQ(asks[0].price, 100'50);
+}
+TEST_F(UnitTest, InvalidOrders)
+{
+    market_config config = {
+        .min_price = 100'00,
+        .max_price = 150'00,
+        .tick_size = 10,
+        .min_quantity = 4,
+        .max_quantity = 20,
+        .lot_size = 2
+    };
+
+    order_book AAPL("AAPL");
+    AAPL.set_market_config(config);
+
+    client customer0;
+    client vendor0;
+
+    // Place valid orders.
+    auto ask0 = vendor0.limit_ask(AAPL, 4, 100'00);
+    auto ask1 = vendor0.limit_ask(AAPL, 8, 125'00);
+    auto ask2 = vendor0.limit_ask(AAPL, 20, 150'00);
+    auto bid0 = customer0.limit_bid(AAPL, 4, 100'10);
+    auto bid1 = customer0.limit_bid(AAPL, 8, 125'10);
+    auto bid2 = customer0.limit_bid(AAPL, 20, 149'90);
+
+    // Place invalid orders (invalid price).
+    auto ask3 = vendor0.limit_ask(AAPL, 10, 90'00);
+    auto ask4 = vendor0.limit_ask(AAPL, 10, 200'00);
+    auto ask5 = vendor0.limit_ask(AAPL, 10, 150'01);
+    auto bid3 = customer0.limit_bid(AAPL, 10, 90'00);
+    auto bid4 = customer0.limit_bid(AAPL, 10, 200'00);
+    auto bid5 = customer0.limit_bid(AAPL, 10, 150'01);
+
+    // Place invalid orders (invalid quantity).
+    auto ask6 = vendor0.limit_ask(AAPL, 2, 150'00);
+    auto ask7 = vendor0.limit_ask(AAPL, 22, 150'00);
+    auto ask8 = vendor0.limit_ask(AAPL, 15, 150'00);
+    auto bid6 = customer0.limit_bid(AAPL, 2, 150'00);
+    auto bid7 = customer0.limit_bid(AAPL, 22, 150'00);
+    auto bid8 = customer0.limit_bid(AAPL, 15, 150'00);
+
+    AAPL.flush_log(true);
+
+    // Check valid orders have valid IDs.
+    ASSERT_NE(ask0, invalid_id);
+    ASSERT_NE(ask1, invalid_id);
+    ASSERT_NE(ask2, invalid_id);
+    ASSERT_NE(bid0, invalid_id);
+    ASSERT_NE(bid1, invalid_id);
+    ASSERT_NE(bid2, invalid_id);
+
+    // Check invalid orders have invalid IDs.
+    ASSERT_EQ(ask3, invalid_id);
+    ASSERT_EQ(ask4, invalid_id);
+    ASSERT_EQ(ask5, invalid_id);
+    ASSERT_EQ(ask6, invalid_id);
+    ASSERT_EQ(ask7, invalid_id);
+    ASSERT_EQ(ask8, invalid_id);
+    ASSERT_EQ(bid3, invalid_id);
+    ASSERT_EQ(bid4, invalid_id);
+    ASSERT_EQ(bid5, invalid_id);
+    ASSERT_EQ(bid6, invalid_id);
+    ASSERT_EQ(bid7, invalid_id);
+    ASSERT_EQ(bid8, invalid_id);
+
+    // Check trades have correct details.
+    auto trades = AAPL.query_trades();
+    ASSERT_EQ(trades.size(), 2);
+    ASSERT_EQ(trades[0].ask_id, ask0);
+    ASSERT_EQ(trades[0].bid_id, bid0);
+    ASSERT_EQ(trades[0].quantity, 4);
+    ASSERT_EQ(trades[0].price, 100'00);
+    ASSERT_EQ(trades[1].ask_id, ask1);
+    ASSERT_EQ(trades[1].bid_id, bid1);
+    ASSERT_EQ(trades[1].quantity, 8);
+    ASSERT_EQ(trades[1].price, 125'00);
+
+    // Ensure there is a resting sell order.
+    auto asks = AAPL.current_sell_orders();
+    ASSERT_EQ(asks.size(), 1);
+    ASSERT_EQ(asks[0].id, ask2);
+    ASSERT_EQ(asks[0].quantity, 20);
+    ASSERT_EQ(asks[0].price, 150'00);
+
+    // Ensure there is a resting buy order.
+    auto bids = AAPL.current_buy_orders();
+    ASSERT_EQ(bids.size(), 1);
+    ASSERT_EQ(bids[0].id, bid2);
+    ASSERT_EQ(bids[0].quantity, 20);
+    ASSERT_EQ(bids[0].price, 149'90);
+}
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <chrono>
 #include <random>
+#include <iostream>
 
 // template <typename DistributionT = std::uniform_real_distribution<float>>
 // auto random(const typename DistributionT::result_type& min, const typename DistributionT::result_type& max)
@@ -18,3 +19,11 @@
         auto end = std::chrono::high_resolution_clock::now(); \
         std::cout << std::format("[{}μs], {}", std::chrono::duration_cast<std::chrono::microseconds>(end - start).count(), #x) << std::endl; \
     }
+
+#ifndef NDEBUG
+    #define debug_print(err_msg) \
+        std::cerr << err_msg << std::endl
+#else
+    #define debug_print(err_msg) ((void) 0)
+#endif
+

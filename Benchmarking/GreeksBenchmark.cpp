@@ -23,10 +23,11 @@ static void BM_BlackScholes(benchmark::State& state)
     input.volatility = random<float>(0.1f, 0.4f);
     input.interest_rate = random<float>(0.01, 0.05f);
 
-    black_scholes::config config;
-    config.maxmium_stock_price = 1.5f;
-    config.stock_price_step = 0.01f;
-    config.time_step = 0.0001f;
+    black_scholes::config config = {
+        .maximum_stock_price = 1.5f,
+        .stock_price_step = 0.01f,
+        .time_step = 0.0001f
+    };
 
     for (auto _ : state)
     {

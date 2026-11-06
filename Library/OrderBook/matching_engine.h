@@ -7,6 +7,7 @@
 #include "Tracy.hpp"
 #include "types.h"
 #include "nlohmann/json.hpp"
+#include "util.h"
 
 class matching_engine
 {
@@ -135,11 +136,32 @@ private:
 #endif
         return std::min(buy_order.quantity, sell_order.quantity);
     }
-
     template <order_like T, order_like U>
-    void _match_ok(const T& buy_order, const U& sell_order)
+    bool _match_ok(const T& order0, const U& order1) const
     {
+#if TRACY_ENABLE == 1
+        ZoneScopedN("_match_ok");
+#endif
+        // Must be one BUY order and one SELL order.
+        if (order0.side == order1.side)
+        {
+#ifndef NDEBUG
+            throw std::logic_error(std::format("matching_engine::_match_ok \"failed; orders are on same side (enum value: {})\"",
+                                               static_cast<int64_t>(order0.side)));
+#endif
+            return false;
+        }
 
+        // If self-cross prevention is enabled, user IDs must differ.
+        if (!_config.cross_orders_allowed)
+            if (order0.user_id == order1.user_id)
+            {
+                debug_print(std::format("matching_engine::_match_ok \"failed; orders made by same user (user_id: {}, order0_id: {}, order1_id: {})\"",
+                            order0.user_id, order0.id, order1.id));
+                return false;
+            }
+
+        return true;
     }
 
     void _make_resting_order(const incoming_order& incoming_order)
@@ -152,6 +174,7 @@ private:
         resting_order.quantity = incoming_order.quantity;
         resting_order.price = incoming_order.price;
         resting_order.id = incoming_order.id;
+        resting_order.user_id = incoming_order.user_id;
 
         // todo: implement properly.
         resting_order.good_until = 0;
@@ -169,6 +192,7 @@ private:
 #if TRACY_ENABLE == 1
         ZoneScopedN("_fill_order");
 #endif
+
         trade trade;
         trade.id = matching_engine::_new_id(_completed_trade_id);
         trade.ask_id = sell_order.id;
@@ -328,6 +352,8 @@ private:
 #if TRACY_ENABLE == 1
                 ZoneScopedN("check order");
 #endif
+                if (matching_engine::_match_ok(incoming_order, resting_order))
+
                 relevant_orders.push_back(&resting_order);
                 remaining_qty -= resting_order.quantity;
                 if (remaining_qty <= 0)
@@ -350,7 +376,7 @@ private:
     ///                                quantity equal to or in excess of the incoming order
     /// @return flat list of pointers to sell/buy orders
     std::vector<resting_order*> _find_orders(const incoming_order& incoming_order,
-                                            bool& has_sufficient_quantity)
+                                bool& has_sufficient_quantity)
     {
 #if TRACY_ENABLE == 1
         ZoneScopedN("_find_orders");

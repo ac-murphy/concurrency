@@ -22,7 +22,8 @@ namespace black_scholes
     };
     struct config
     {
-        float maxmium_stock_price;
+        float maximum_stock_price;
+        float minimum_stock_price = 0.0f;
         float stock_price_step;
         float time_step;
     };
@@ -35,6 +36,39 @@ namespace black_scholes
         solution(const size_t& N, const size_t& I)
         : option_price(N, I), time(N), stock_price(I)
         {}
+
+        float operator()(const float& time_, const float& stock_price_)
+        {
+            // Find lower bound index for time.
+            size_t t = 0;
+            if (time_ <= time.minCoeff())
+                t = 0;
+            else if (time_ >= time.maxCoeff())
+                t = time.size() - 1;
+            else
+                while (time[t + 1] < time_)
+                    t++;
+
+            // Find lower bound index for stock price.
+            size_t i = 0;
+            if (stock_price_ <= stock_price.minCoeff())
+                i = 0;
+            else if (stock_price_ >= stock_price.maxCoeff())
+                i = stock_price.size() - 1;
+            else
+                while (stock_price[i + 1] < stock_price_)
+                    i++;
+
+            // Calculate weights in both axes.
+            const float w_stock_price = (stock_price_ - stock_price[i]) / (stock_price[i + 1] - stock_price[i]);
+            const float w_time = (time_ - time[t]) / (time[t + 1] - time[t]);
+
+            // Bilinearly interpolate values.
+            return   (1.0f - w_stock_price) * (1.0f - w_time) * option_price(t, i)
+                   + w_stock_price          * (1.0f - w_time) * option_price(t, i + 1)
+                   + (1.0f - w_stock_price) * w_time          * option_price(t + 1, i)
+                   + w_stock_price          * w_time          * option_price(t + 1, i + 1);
+        }
     };
 
     inline float closed_form_eq(const black_scholes::input& input,
@@ -68,7 +102,8 @@ namespace black_scholes
         const float& T = input.duration;
 
         // Solver parameters.
-        const float& S_max = config.maxmium_stock_price;
+        const float& S_max = config.maximum_stock_price;
+        const float& S_min = config.minimum_stock_price;
         const float& ds = config.stock_price_step;
         const float& dt = config.time_step;
 
@@ -79,18 +114,18 @@ namespace black_scholes
 
         // Calculate maximum index for stock price.
         size_t I = 0;
-        for (float i = 0.0f; i < S_max; i += ds)
+        for (float i = S_min; i < S_max; i += ds)
             ++I;
 
         // Calculate values.
         black_scholes::solution solution(N, I);
         for (size_t n = 0; n < N; ++n)
             for (size_t i = 0; i < I; ++i)
-                solution.option_price(n, i) = black_scholes::closed_form_eq(input, i * ds, T - n * dt);
+                solution.option_price(n, i) = black_scholes::closed_form_eq(input, S_min + i * ds, T - n * dt);
 
         // Populate axes.
         for (size_t n = 0; n < N; ++n) solution.time(n) = n * dt;
-        for (size_t i = 0; i < I; ++i) solution.stock_price(i) = i * ds;
+        for (size_t i = 0; i < I; ++i) solution.stock_price(i) = S_min + i * ds;
 
         return solution;
     }
@@ -105,7 +140,8 @@ namespace black_scholes
         const float& T = input.duration;
 
         // Solver parameters.
-        const float& S_max = config.maxmium_stock_price;
+        const float& S_max = config.maximum_stock_price;
+        const float& S_min = config.minimum_stock_price;
         const float& ds = config.stock_price_step;
         const float& dt = config.time_step;
 
@@ -116,7 +152,7 @@ namespace black_scholes
 
         // Calculate maximum index for stock price.
         size_t I = 0;
-        for (float i = 0.0f; i < S_max; i += ds)
+        for (float i = S_min; i < S_max; i += ds)
             ++I;
 
         // Value matrix.
@@ -127,14 +163,14 @@ namespace black_scholes
         // Initial condition:
         //  V(0, S) = max(S - K, 0)
         for (size_t i = 0; i < I; ++i)
-            V(0, i) = std::max(i * ds - K, 0.0f);
+            V(0, i) = std::max(S_min + i * ds - K, 0.0f);
 
         // Boundary conditions:
         //  V(t, 0) = 0
         //  V(t, S_max) = S_max - K*exp(-r*t) - note: instead we are using the exact solution at this boundary.
         for (size_t n = 1; n < N; ++n)
         {
-            V(n, 0) = 0.0f;
+            V(n, 0) = black_scholes::closed_form_eq(input, S_min, T - n * dt); //0.0f;
             V(n, I - 1) = black_scholes::closed_form_eq(input, S_max, T - n * dt);
         }
 
@@ -142,15 +178,15 @@ namespace black_scholes
         for (size_t n = 0; n < N - 1; ++n)
             for (size_t i = 1; i < I - 1; ++i)
                 V(n + 1, i) = V(n, i) + dt *
-                              (0.5f * s*s * (i * ds)*(i * ds) * ((
+                              (0.5f * s*s * (S_min + i * ds)*(S_min + i * ds) * ((
                                V(n, i + 1) - 2.0f * V(n, i) + V(n, i - 1)) / (ds * ds)) +
-                               r * (i * ds) * ((V(n, i + 1) - V(n, i - 1)) / (2.0f * ds)) -
+                               r * (S_min + i * ds) * ((V(n, i + 1) - V(n, i - 1)) / (2.0f * ds)) -
                                r * V(n, i));
 
         // Populate axes.
         //  todo: could substitute "i * ds" for value in solution.stock_price in above calculation.
         for (size_t n = 0; n < N; ++n) solution.time(n) = n * dt;
-        for (size_t i = 0; i < I; ++i) solution.stock_price(i) = i * ds;
+        for (size_t i = 0; i < I; ++i) solution.stock_price(i) = S_min + i * ds;
 
         return solution;
     }
@@ -165,7 +201,7 @@ namespace black_scholes
         const float& T = input.duration;
 
         // Solver parameters.
-        const float& S_max = config.maxmium_stock_price;
+        const float& S_max = config.maximum_stock_price;
         const float& ds = config.stock_price_step;
         const float& dt = config.time_step;
 

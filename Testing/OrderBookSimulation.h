@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "OrderBook/order_book.h"
 #include "Tracy.hpp"
+#include "Greeks/BlackScholes.h"
 
 class OrderBookSimulation : public ::testing::Test
 {
@@ -55,19 +56,19 @@ protected:
 
 TEST_F(OrderBookSimulation, Basic)
 {
-    // struct book_state
-    // {
-    //     std::vector<price_type> fair_price;
-    //     std::vector<price_type> best_asks, best_bids, spread, trade_prices;
-    //     std::vector<time_type> timestamps;
-    // };
-
     // book_state state;
     std::vector<price_type> fair_prices;
     time_type timestamp = 0;
 
     // Initialise.
+    matching_config m_config = {
+        .market_orders_allowed = true,
+        .cross_orders_allowed = true
+    };
+    market_config mk_config;
     order_book AAPL("AAPL");
+    AAPL.set_matching_config(m_config);
+    AAPL.set_market_config(mk_config);
 
     client client;
     price_type baseline_price = 100'00;
@@ -112,15 +113,6 @@ TEST_F(OrderBookSimulation, Basic)
             else
                 client.limit_bid(AAPL, 3 * quantity, bid_price(AAPL, fair_price, spread), order_policy::GTC);
         }
-
-        // Capture data.
-        {
-            // state.best_asks.push_back(AAPL.best_ask());
-            // state.best_bids.push_back(AAPL.best_bid());
-            // state.trade_prices.push_back(AAPL.query_trades().empty() ? invalid_price : AAPL.query_trades().back().price);
-            // state.spread.push_back(AAPL.best_ask() == invalid_price || AAPL.best_bid() == invalid_price ? invalid_price : AAPL.best_ask() - AAPL.best_bid());
-            // state.timestamps.push_back(++timestamp);
-        }
     }
 
     auto end_time = std::chrono::high_resolution_clock::now();
@@ -129,11 +121,85 @@ TEST_F(OrderBookSimulation, Basic)
     // Post-simulation capture.
     std::vector<price_type> trade_prices;
     std::vector<time_type> trade_timestamps;
-    for (const trade& trade : AAPL.trades())
+    auto trades = AAPL.load_trades();
+    for (const trade& trade : trades)
     {
         trade_prices.push_back(trade.price);
-        trade_timestamps.push_back(trade.timestamp);
+        trade_timestamps.push_back(trade.timestamp - trades.front().timestamp);
     }
+
+    black_scholes::config bs_config = {
+        .maximum_stock_price = static_cast<float>(*std::ranges::max_element(trade_prices)),
+        .minimum_stock_price = static_cast<float>(*std::ranges::min_element(trade_prices)),
+        .stock_price_step    = 100.0f,
+        .time_step           = 0.01f
+    };
+    black_scholes::input bs_input = {
+        .strike_price  = 80'00.0f,
+        .duration      = 10.0f,
+        .volatility    = 0.02f,
+        .interest_rate = 0.01f
+    };
+    black_scholes::solution bs_solution = black_scholes::explicit_scheme_solver(bs_input, bs_config);
+
+    auto option_prices = [&](const float& t)
+    {
+        std::vector<float> v;
+        v.reserve(trade_prices.size());
+        for (size_t i = 0; i < trade_prices.size(); ++i)
+            v.push_back(bs_solution(t, trade_prices[i]));
+
+        return v;
+    };
+
+    // Visualise.
+    vis::visualise_plotting vis;
+
+    vis.begin_frame("market sim");
+    {
+        vis.set_axis_labels("time $t$ (ns)", "price $P$ (GBP)");
+        vis.set_legend_visible(true);
+
+        vis::plot_2D<time_type, price_type> plot__trade_price;
+        plot__trade_price.label = "trade price";
+        plot__trade_price.x_values = trade_timestamps;
+        plot__trade_price.y_values = trade_prices;
+        vis.add(plot__trade_price);
+
+        vis::plot_2D<float> plot__option_price_0;
+        plot__option_price_0.label = "option price $(t = 0)$";
+        plot__option_price_0.x_values = trade_timestamps;
+        plot__option_price_0.y_values = option_prices(0.0f);
+        vis.add(plot__option_price_0);
+
+        vis::plot_2D<float> plot__option_price_1;
+        plot__option_price_1.label = "option price $(t = \\frac{1}{2})$";
+        plot__option_price_1.x_values = trade_timestamps;
+        plot__option_price_1.y_values = option_prices(5.0f);
+        vis.add(plot__option_price_1);
+
+        vis::plot_2D<float> plot__option_price_2;
+        plot__option_price_2.label = "option price $(t = 1)$";
+        plot__option_price_2.x_values = trade_timestamps;
+        plot__option_price_2.y_values = option_prices(10.0f);
+        vis.add(plot__option_price_2);
+    }
+    vis.end_frame();
+
+    vis.begin_frame("option surface");
+    {
+        vis.set_axis_labels("stock_price", "time", "option_price");
+
+        vis::plot_3D<float> plot;
+        plot.x_values = bs_solution.stock_price;
+        plot.y_values = bs_solution.time;
+        plot.z_values = bs_solution.option_price;
+        plot.data_storage_order = vis::storage_order::column_major;
+        vis.add(plot);
+    }
+    vis.end_frame();
+
+    vis.run();
 
     // Visualise.
     // vis::visualise_plotting vis;
