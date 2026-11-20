@@ -33,6 +33,7 @@ struct incoming_order
 
     id_type id;
     id_type user_id;
+    id_type sequence_id;
     quantity_type quantity;
     time_type timestamp;
     price_type price;

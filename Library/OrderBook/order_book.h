@@ -9,15 +9,11 @@ class order_book
 {
 public:
     order_book() = delete;
-    ~order_book()
-    {
-        _log.join();
-    }
+    ~order_book() = default;
 
     order_book(const std::string& name)
     : _stock_name(name), _matching_engine(name), _output_dir(std::filesystem::path(OUTPUT_DIR)/"books"/name)
     {
-        _log.set_output_path(_output_dir/"orders.bin");
         _matching_engine.set_log_output_path(_output_dir/"trades.bin");
         order_book::start_log();
     }
@@ -31,8 +27,8 @@ public:
         if (order_book::_order_valid(ask))
             _matching_engine.match(ask);
 
-        // Save regardless of validity.
-        _log.save(ask);
+        // // Save regardless of validity.
+        // _log.save(ask);
 
         return ask.id;
     }
@@ -44,8 +40,8 @@ public:
         if (order_book::_order_valid(bid))
             _matching_engine.match(bid);
 
-        // Save regardless of validity.
-        _log.save(bid);
+        // // Save regardless of validity.
+        // _log.save(bid);
 
         return bid.id;
     }
@@ -133,12 +129,10 @@ public:
     }
     void start_log()
     {
-        _log.start();
         _matching_engine.start_log();
     }
     void flush_log(const bool& yield = false)
     {
-        _log.flush(yield);
         _matching_engine.flush_log(yield);
     }
 
@@ -213,13 +207,13 @@ private:
 #if TRACY_ENABLE == 1
         ZoneScopedN("_order_ok");
 #endif
-        if (order.quantity < _config.min_quantity || order.quantity > _config.max_quantity)
+        if (order.quantity < _config.min_quantity || order.quantity > _config.max_quantity || order.quantity == invalid_quantity)
         {
             debug_print(std::format("order_book::_order_ok \"failed; invalid order quantity (qty: {}, min_ok: {}, max_ok: {})\"",
                                     order.quantity, _config.min_quantity, _config.max_quantity));
             return false;
         }
-        if (order.price < _config.min_price       || order.price > _config.max_price)
+        if (order.price < _config.min_price       || order.price > _config.max_price       || order.price == invalid_price)
         {
             debug_print(std::format("order_book::_order_ok \"failed; invalid order price (price: {}, min_ok: {}, max_ok: {})\"",
                                     order.price, _config.min_price, _config.max_price));
@@ -258,23 +252,20 @@ private:
 #if TRACY_ENABLE == 1
         ZoneScopedN("_make_order");
 #endif
-        incoming_order order;
-        order.type = price == 0 ? MARKET : LIMIT;
-        order.side = side;
-        order.policy = policy;
-        order.quantity = quantity;
-        order.price = price;
-        order.id = _new_id(_order_id);
-        order.user_id = user_id;
-        order.timestamp = order_book::_new_timestamp();
+        incoming_order order = {
+            .type        = price == 0 ? MARKET : LIMIT,
+            .side        = side,
+            .policy      = policy,
+            .id          = order_book::_new_id(_order_id),
+            .user_id     = user_id,
+            .sequence_id = order_book::_new_id(_sequence_id),
+            .quantity    = quantity,
+            .timestamp   = order_book::_new_timestamp(),
+            .price       = price
+        };
 
         if (!order_book::_order_ok(order))
-        {
-#if TRACY_ENABLE == 1
-            ZoneScopedN("return invalid order");
-#endif
             return invalid_order;
-        }
         else
             return order;
     }
@@ -290,13 +281,37 @@ private:
     uint32_t _sell_order_id = 0;
     uint32_t _buy_order_id = 0;
     id_type _order_id = 0;
+    id_type _sequence_id = 0;
     std::filesystem::path _output_dir;
-    event_log<incoming_order, 1'000, 100> _log;
 
     std::string _stock_name;
     market_config _config;
     matching_engine _matching_engine;
 };
+
+// class order_book_history
+// {
+// public:
+//     order_book_history(order_book& book) : _book(book)
+//     {}
+//
+// public:
+//     std::vector<
+//
+// public:
+//     void refresh()
+//     {
+//         _trades = _book.load_trades();
+//         _buy_orders = _book.load_buy_orders();
+//         _sell_orders = _book.load_buy_orders();
+//     }
+//
+// private:
+//     order_book& _book;
+//     std::vector<trade> _trades;
+//     std::vector<incoming_order> _buy_orders;
+//     std::vector<incoming_order> _sell_orders;
+// };
 
 class client
 {

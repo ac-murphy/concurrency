@@ -16,16 +16,33 @@ namespace black_scholes
     struct input
     {
         float strike_price;
-        float duration;
         float volatility;
         float interest_rate;
     };
+    struct variable_input
+    {
+        float strike_price;
+        Eigen::VectorXf volatility;
+        Eigen::VectorXf interest_rate;
+    };
     struct config
     {
-        float maximum_stock_price;
-        float minimum_stock_price = 0.0f;
-        float stock_price_step;
-        float time_step;
+        float stock_price_minimum;
+        float stock_price_maximum;
+        size_t stock_price_steps;
+        float time_start;
+        float time_end;
+        size_t time_steps;
+
+        float stock_price_step() const
+        {
+            return (stock_price_maximum - stock_price_minimum) / (stock_price_steps - 1);
+        }
+
+        float time_step() const
+        {
+            return (time_end - time_start) / (time_steps - 1);
+        }
     };
     struct solution
     {
@@ -72,6 +89,7 @@ namespace black_scholes
     };
 
     inline float closed_form_eq(const black_scholes::input& input,
+                                const black_scholes::config& config,
                                 const float& current_stock_price,
                                 const float& time)
     {
@@ -81,7 +99,8 @@ namespace black_scholes
         const float& K = input.strike_price;
         const float& s = input.volatility;
         const float& r = input.interest_rate;
-        const float tau = input.duration - time;
+        const float duration = config.time_end - config.time_start;
+        const float tau = config.time_start + duration - time;
 
         // Since this formula contains a division by time (tau), this
         //  special case is needed.
@@ -99,32 +118,28 @@ namespace black_scholes
                                                       const black_scholes::config& config)
     {
         // Variables.
-        const float& T = input.duration;
+        // const float& T = input.duration;
 
         // Solver parameters.
-        const float& S_max = config.maximum_stock_price;
-        const float& S_min = config.minimum_stock_price;
-        const float& ds = config.stock_price_step;
-        const float& dt = config.time_step;
+        const float& S_max = config.stock_price_maximum;
+        const float& S_min = config.stock_price_minimum;
+        const float ds     = config.stock_price_step();
+        const size_t& I    = config.stock_price_steps;
+        const float& T_start = config.time_start;
+        const float& T_end   = config.time_end;
+        const float dt       = config.time_step();
+        const size_t& N      = config.time_steps;
 
-        // Calculate maximum index for time.
-        size_t N = 0;
-        for (float t = 0.0f; t < T; t += dt)
-            ++N;
 
-        // Calculate maximum index for stock price.
-        size_t I = 0;
-        for (float i = S_min; i < S_max; i += ds)
-            ++I;
 
         // Calculate values.
         black_scholes::solution solution(N, I);
         for (size_t n = 0; n < N; ++n)
             for (size_t i = 0; i < I; ++i)
-                solution.option_price(n, i) = black_scholes::closed_form_eq(input, S_min + i * ds, T - n * dt);
+                solution.option_price(n, i) = black_scholes::closed_form_eq(input, config, S_min + i * ds, T_end - n * dt);
 
         // Populate axes.
-        for (size_t n = 0; n < N; ++n) solution.time(n) = n * dt;
+        for (size_t n = 0; n < N; ++n) solution.time(n) = T_start + n * dt;
         for (size_t i = 0; i < I; ++i) solution.stock_price(i) = S_min + i * ds;
 
         return solution;
@@ -137,26 +152,18 @@ namespace black_scholes
         const float& K = input.strike_price;
         const float& s = input.volatility;
         const float& r = input.interest_rate;
-        const float& T = input.duration;
 
         // Solver parameters.
-        const float& S_max = config.maximum_stock_price;
-        const float& S_min = config.minimum_stock_price;
-        const float& ds = config.stock_price_step;
-        const float& dt = config.time_step;
-
-        // Calculate maximum index for time.
-        size_t N = 0;
-        for (float t = 0.0f; t < T; t += dt)
-            ++N;
-
-        // Calculate maximum index for stock price.
-        size_t I = 0;
-        for (float i = S_min; i < S_max; i += ds)
-            ++I;
+        const float& S_max = config.stock_price_maximum;
+        const float& S_min = config.stock_price_minimum;
+        const float ds     = config.stock_price_step();
+        const size_t& I    = config.stock_price_steps;
+        const float& T_start = config.time_start;
+        const float& T_end   = config.time_end;
+        const float dt       = config.time_step();
+        const size_t& N      = config.time_steps;
 
         // Value matrix.
-        // std::vector V(N, std::vector(I, 0.0f));
         black_scholes::solution solution(N, I);
         auto& V = solution.option_price;
 
@@ -170,8 +177,9 @@ namespace black_scholes
         //  V(t, S_max) = S_max - K*exp(-r*t) - note: instead we are using the exact solution at this boundary.
         for (size_t n = 1; n < N; ++n)
         {
-            V(n, 0) = black_scholes::closed_form_eq(input, S_min, T - n * dt); //0.0f;
-            V(n, I - 1) = black_scholes::closed_form_eq(input, S_max, T - n * dt);
+            const float tau = T_end - n * dt;
+            V(n, 0) = black_scholes::closed_form_eq(input, config, S_min, tau);
+            V(n, I - 1) = black_scholes::closed_form_eq(input, config, S_max, tau);
         }
 
         // Calculate values.
@@ -184,8 +192,7 @@ namespace black_scholes
                                r * V(n, i));
 
         // Populate axes.
-        //  todo: could substitute "i * ds" for value in solution.stock_price in above calculation.
-        for (size_t n = 0; n < N; ++n) solution.time(n) = n * dt;
+        for (size_t n = 0; n < N; ++n) solution.time(n) = T_start + n * dt;
         for (size_t i = 0; i < I; ++i) solution.stock_price(i) = S_min + i * ds;
 
         return solution;
@@ -198,22 +205,24 @@ namespace black_scholes
         const float& K = input.strike_price;
         const float& s = input.volatility;
         const float& r = input.interest_rate;
-        const float& T = input.duration;
 
         // Solver parameters.
-        const float& S_max = config.maximum_stock_price;
-        const float& ds = config.stock_price_step;
-        const float& dt = config.time_step;
+        const float& S_max = config.stock_price_maximum;
+        const float& S_min = config.stock_price_minimum;
+        const float  ds    = config.stock_price_step();
+        const float& T_start = config.time_start;
+        const float& T_end   = config.time_end;
+        const float  dt      = config.time_step();
 
         // Calculate maximum index for time.
-        size_t N = 0;
-        for (float t = 0.0f; t < T; t += dt)
-            ++N;
+        const size_t& N = config.time_steps; // 0;
+        // for (float t = T_start; t < T_end; t += dt)
+        //     ++N;
 
         // Calculate maximum index for stock price.
-        size_t I = 0;
-        for (float i = 0.0f; i < S_max; i += ds)
-            ++I;
+        const size_t& I = config.stock_price_steps; // 0;
+        // for (float i = S_min; i < S_max; i += ds)
+        //     ++I;
 
         // Value matrix.
         black_scholes::solution solution(N, I);
@@ -223,15 +232,15 @@ namespace black_scholes
         V.setZero();
 
         // Coefficients.
-        auto alpha = [&](const size_t& i)
+        auto alpha = [&](const size_t& n, const size_t& i)
         {
             return -((i * dt) / (2.0f)) * (((i * s*s)) - r);
         };
-        auto beta = [&](const size_t& i)
+        auto beta = [&](const size_t& n, const size_t& i)
         {
             return 1.0f + dt * ((s*s * i * i) + r);
         };
-        auto gamma = [&](const size_t& i)
+        auto gamma = [&](const size_t& n, const size_t& i)
         {
             return -((i * dt) / (2.0f)) * (((i * s*s)) + r);
         };
@@ -239,28 +248,28 @@ namespace black_scholes
         // Initial condition.
         //  V(0, S) = max(S - K, 0)
         for (size_t i = 0; i < I; ++i)
-            V(0, i) = std::max(i * ds - K, 0.0f);
+            V(0, i) = std::max(S_min + i * ds - K, 0.0f);
 
-        // Solve system "Ax = b" for each 0 <= n <= N.
+        // Solve system "Ax = b" for each 0 < n <= N.
         for (size_t n = 1; n < N; ++n)
         {
             // Values.
-            const float lower_boundary = 0.0f;
-            const float upper_boundary = black_scholes::closed_form_eq(input, S_max, T - n * dt);
+            const float lower_boundary = black_scholes::closed_form_eq(input, config, S_min, T_end - n * dt);
+            const float upper_boundary = black_scholes::closed_form_eq(input, config, S_max, T_end - n * dt);
             const size_t _I = I - 2;
 
             // Populate "b".
             Eigen::VectorXf b = V.row(n - 1).segment(1, _I).transpose();
-            b[0]     -= alpha(0) * lower_boundary;
-            b[_I - 1] -= gamma(_I - 1) * upper_boundary;
+            b[0]     -= alpha(n, 0) * lower_boundary;
+            b[_I - 1] -= gamma(n, _I - 1) * upper_boundary;
 
             // Populate "A".
             Eigen::SparseMatrix<float> A(_I, _I);
             for (size_t i = 0; i < _I; ++i)
             {
-                if (i > 0)     A.coeffRef(i, i - 1) = alpha(i);
-                A.coeffRef(i, i)     = beta(i);
-                if (i + 1 < _I) A.coeffRef(i, i + 1) = gamma(i);
+                if (i > 0)      A.coeffRef(i, i - 1)  = alpha(n, i);
+                                A.coeffRef(i, i)      = beta(n, i);
+                if (i + 1 < _I) A.coeffRef(i, i + 1)  = gamma(n, i);
             }
 
             // Solve system for "x".
@@ -274,14 +283,114 @@ namespace black_scholes
             V.row(n)[I - 1] = upper_boundary;
         }
 
-        // Populate axes.
-        // for (size_t n = 0; n < N; ++n)
-        //     for (size_t i = 0; i < I; ++i)
-        //         solution.option_price.push_back(V(n, i));
-
-        for (size_t n = 0; n < N; ++n) solution.time(n) = n * dt;
-        for (size_t i = 0; i < I; ++i) solution.stock_price(i) = i * ds;
+        for (size_t n = 0; n < N; ++n) solution.time(n) = T_start + n * dt;
+        for (size_t i = 0; i < I; ++i) solution.stock_price(i) = S_min + i * ds;
 
         return solution;
+    }
+
+    inline black_scholes::solution crank_nicholson_solver(const black_scholes::variable_input& input,
+                                                          const black_scholes::config& config)
+    {
+        // Solver parameters.
+        const float& S_max = config.stock_price_maximum;
+        const float& S_min = config.stock_price_minimum;
+        const float dS     = config.stock_price_step();
+        const float& T_start = config.time_start;
+        const float& T_end   = config.time_end;
+        const float dT       = config.time_step();
+
+        // Variables.
+        const float& K = input.strike_price;
+        const auto& s = input.volatility;
+        const auto& r = input.interest_rate;
+        const size_t& N = config.time_steps;
+        const size_t& I = config.stock_price_steps;
+        const float duration = T_end - T_start;
+
+        // Solution variable.
+        black_scholes::solution solution(N, I);
+        auto& V = solution.option_price;
+
+        // Generate time values.
+        auto& T = solution.time;
+        for (size_t idx = 0; idx < N; ++idx)
+            T(idx) = T_start + idx * dT;
+
+        // Generate stock price values.
+        auto& S = solution.stock_price;
+        for (size_t idx = 0; idx < I; ++idx)
+            S(idx) = S_min + idx * dS;
+
+        auto alpha = [&](const size_t& n, const size_t& i)
+        {
+            return s(n) * s(n) * S(i) * S(i) / (2.0f * dS * dS) - (r(n) * S(i)) / (2.0f * dS);
+        };
+        auto beta = [&](const size_t& n, const size_t& i)
+        {
+            return -(s(n) * s(n) * S(i) * S(i)) / (dS * dS) - r(n);
+        };
+        auto gamma = [&](const size_t& n, const size_t& i)
+        {
+            return s(n) * s(n) * S(i) * S(i) / (2.0f * dS * dS) + (r(n) * S(i)) / (2.0f * dS);
+        };
+
+        const auto I_interior = I - 2;
+        Eigen::MatrixXf unknown_coeff_M = Eigen::MatrixXf::Zero(I_interior, I_interior);
+        Eigen::MatrixXf known_coeff_M = Eigen::MatrixXf::Zero(I_interior, I_interior);
+
+        // Initial condition.
+        //  V(0, S) = max(S - K, 0).
+        for (size_t i = 0; i < I; ++i)
+        {
+            V(0, i) = std::max(S(i) - K, 0.0f);
+        }
+
+        // Solve interior.
+        for (size_t n = 1; n < N; ++n)
+        {
+            // Variables.
+            const float tau = duration - T(n);
+
+            // Boundary conditions.
+            V(n, 0)     = 0.0f;
+            V(n, I - 1) = S_max - K * std::exp(-r(n) * tau);;
+
+            // Build matrices.
+            for (size_t i = 0; i < I_interior; ++i)
+            {
+                if (i > 0)              unknown_coeff_M(i, i - 1) =      - 0.5f * dT * alpha(n,     i + 1);
+                                        unknown_coeff_M(i, i    ) = 1.0f - 0.5f * dT *  beta(n,     i + 1);
+                if (i + 1 < I_interior) unknown_coeff_M(i, i + 1) =      - 0.5f * dT * gamma(n,     i + 1);
+
+                if (i > 0)              known_coeff_M(i, i - 1) =        0.5f * dT * alpha(n - 1, i + 1);
+                                        known_coeff_M(i, i    ) = 1.0f + 0.5f * dT *  beta(n - 1, i + 1);
+                if (i + 1 < I_interior) known_coeff_M(i, i + 1) =        0.5f * dT * gamma(n - 1, i + 1);
+            }
+
+            Eigen::VectorXf rhs = known_coeff_M * V.row(n - 1).segment(1, I_interior).transpose();
+            rhs(0)              += 0.5f * dT * alpha(n, 1    ) * (V(n, 0    ) + V(n - 1, 0    ));
+            rhs(I_interior - 1) += 0.5f * dT * gamma(n, I - 2) * (V(n, I - 1) + V(n - 1, I - 1));
+
+            Eigen::VectorXf x = unknown_coeff_M.partialPivLu().solve(rhs);
+            V.row(n).segment(1, I_interior) = x.transpose();
+        }
+
+        return solution;
+    }
+
+    inline black_scholes::solution crank_nicholson_solver(const black_scholes::input& input,
+                                                          const black_scholes::config& config)
+    {
+        const size_t N = config.time_steps;
+        const size_t I = config.stock_price_steps;
+
+        black_scholes::variable_input variable_input = {
+            .strike_price = input.strike_price,
+            .volatility = Eigen::VectorXf::Constant(N, input.volatility),
+            .interest_rate = Eigen::VectorXf::Constant(N, input.interest_rate),
+        };
+
+        return black_scholes::crank_nicholson_solver(variable_input, config);
     }
 }

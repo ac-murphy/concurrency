@@ -2,10 +2,12 @@
 
 #include <random>
 
+#include "eigen-5.0.0/unsupported/Eigen/CXX11/Tensor"
 #include "gtest/gtest.h"
 #include "OrderBook/order_book.h"
 #include "Tracy.hpp"
 #include "Greeks/BlackScholes.h"
+#include "Greeks/Statistics.h"
 
 class OrderBookSimulation : public ::testing::Test
 {
@@ -129,28 +131,58 @@ TEST_F(OrderBookSimulation, Basic)
     }
 
     black_scholes::config bs_config = {
-        .maximum_stock_price = static_cast<float>(*std::ranges::max_element(trade_prices)),
-        .minimum_stock_price = static_cast<float>(*std::ranges::min_element(trade_prices)),
-        .stock_price_step    = 100.0f,
-        .time_step           = 0.01f
+        .stock_price_minimum = static_cast<float>(*std::ranges::min_element(trade_prices)),
+        .stock_price_maximum = static_cast<float>(*std::ranges::max_element(trade_prices)),
+        .stock_price_steps   = 30,
+        .time_start          = 0.0f,
+        .time_end            = 1.0f,
+        .time_steps          = 1000
     };
     black_scholes::input bs_input = {
-        .strike_price  = 80'00.0f,
-        .duration      = 10.0f,
-        .volatility    = 0.02f,
+        .strike_price = 80'00.0f,
+        .volatility = 0.02f,
         .interest_rate = 0.01f
     };
+    // black_scholes::variable_input bs_input = {
+    //     .strike_price  = 80'00.0f,
+    //     .volatility    = Eigen::VectorXf::Constant(trade_prices.size(), 0.02f), // stats::volatility(trade_prices),
+    //     .interest_rate = Eigen::VectorXf::Constant(trade_prices.size(), 0.01f)
+    // };
     black_scholes::solution bs_solution = black_scholes::explicit_scheme_solver(bs_input, bs_config);
+    black_scholes::solution bs_solution_2 = black_scholes::crank_nicholson_solver(bs_input, bs_config);
 
     auto option_prices = [&](const float& t)
     {
         std::vector<float> v;
         v.reserve(trade_prices.size());
         for (size_t i = 0; i < trade_prices.size(); ++i)
-            v.push_back(bs_solution(t, trade_prices[i]));
+            v.push_back(bs_solution_2(t, trade_prices[i]));
 
         return v;
     };
+
+    {
+        Eigen::VectorXf trade_prices_avg(trade_prices.size());
+        constexpr size_t kernel_size = 1000;
+
+        Eigen::Tensor<float, 1> trade_prices_input(trade_prices.size());
+        for (size_t i = 0; i < trade_prices.size(); ++i)
+            trade_prices_input(i) = static_cast<float>(trade_prices[i]);
+
+        Eigen::Tensor<float, 1> kernel(kernel_size);
+        for (size_t i = 0; i < kernel_size; ++i)
+            kernel(i) = 1.0f / kernel_size;
+
+        constexpr size_t pad_size = (kernel_size - 1 / 2);
+        Eigen::array<std::pair<size_t, size_t>, 1> padding;
+        padding[0] = { pad_size, pad_size };
+        Eigen::Tensor<float, 1> trade_prices_input_padded = trade_prices_input.pad(padding, std::numeric_limits<float>::quiet_NaN());
+
+        Eigen::array<size_t, 1> dims = { 0 };
+        Eigen::Tensor<float, 1> trade_prices_output = trade_prices_input_padded.convolve(kernel, dims);
+        for (size_t i = 0; i < trade_prices.size(); ++i)
+            trade_prices_avg(i) = trade_prices_output(i);
+    }
 
     // Visualise.
     vis::visualise_plotting vis;
@@ -166,27 +198,40 @@ TEST_F(OrderBookSimulation, Basic)
         plot__trade_price.y_values = trade_prices;
         vis.add(plot__trade_price);
 
-        vis::plot_2D<float> plot__option_price_0;
-        plot__option_price_0.label = "option price $(t = 0)$";
-        plot__option_price_0.x_values = trade_timestamps;
-        plot__option_price_0.y_values = option_prices(0.0f);
-        vis.add(plot__option_price_0);
+        // vis::plot_2D<float> plot__option_price_0;
+        // plot__option_price_0.label = "option price $(t = 0)$";
+        // plot__option_price_0.x_values = trade_timestamps;
+        // plot__option_price_0.y_values = option_prices(0.0f);
+        // vis.add(plot__option_price_0);
+        //
+        // vis::plot_2D<float> plot__option_price_1;
+        // plot__option_price_1.label = "option price $(t = \\frac{1}{2})$";
+        // plot__option_price_1.x_values = trade_timestamps;
+        // plot__option_price_1.y_values = option_prices(5.0f);
+        // vis.add(plot__option_price_1);
 
-        vis::plot_2D<float> plot__option_price_1;
-        plot__option_price_1.label = "option price $(t = \\frac{1}{2})$";
-        plot__option_price_1.x_values = trade_timestamps;
-        plot__option_price_1.y_values = option_prices(5.0f);
-        vis.add(plot__option_price_1);
-
-        vis::plot_2D<float> plot__option_price_2;
-        plot__option_price_2.label = "option price $(t = 1)$";
-        plot__option_price_2.x_values = trade_timestamps;
-        plot__option_price_2.y_values = option_prices(10.0f);
-        vis.add(plot__option_price_2);
+        // vis::plot_2D<float> plot__option_price_2;
+        // plot__option_price_2.label = "option price $(t = 1)$";
+        // plot__option_price_2.x_values = trade_timestamps;
+        // plot__option_price_2.y_values = option_prices(10.0f);
+        // vis.add(plot__option_price_2);
     }
     vis.end_frame();
 
-    vis.begin_frame("option surface");
+    vis.begin_frame("option surface (IS)");
+    {
+        vis.set_axis_labels("stock_price", "time", "option_price");
+
+        vis::plot_3D<float> plot;
+        plot.x_values = bs_solution_2.stock_price;
+        plot.y_values = bs_solution_2.time;
+        plot.z_values = bs_solution_2.option_price;
+        plot.data_storage_order = vis::storage_order::column_major;
+        vis.add(plot);
+    }
+    vis.end_frame();
+
+    vis.begin_frame("option surface (ES)");
     {
         vis.set_axis_labels("stock_price", "time", "option_price");
 

@@ -24,7 +24,7 @@ static void BM_BlackScholes(benchmark::State& state)
     input.interest_rate = random<float>(0.01, 0.05f);
 
     black_scholes::config config = {
-        .maximum_stock_price = 1.5f,
+        .stock_price_maximum = 1.5f,
         .stock_price_step = 0.01f,
         .time_step = 0.0001f
     };

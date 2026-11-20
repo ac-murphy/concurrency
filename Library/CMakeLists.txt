@@ -33,9 +33,13 @@ if ("${TRACY_PROFILER_GLOBAL}" STREQUAL "ON")
     add_subdirectory(${PROJECT_SOURCE_DIR}/Dependencies/Tracy/Tracy_0.9.1)
 endif ()
 
+# Specify include paths.
 target_include_directories(LibraryProject PUBLIC
         ${PROJECT_SOURCE_DIR}/
+)
+target_include_directories(LibraryProject SYSTEM PUBLIC
         ${PROJECT_SOURCE_DIR}/Dependencies/Json/include
+        ${PROJECT_SOURCE_DIR}/Dependencies/Eigen
         ${PROJECT_SOURCE_DIR}/Dependencies/Eigen/eigen-5.0.0/Eigen
         if ("${TRACY_PROFILER_GLOBAL}" STREQUAL "ON")
         ${PROJECT_SOURCE_DIR}/Dependencies/Tracy/Tracy_0.9.1/public/tracy/

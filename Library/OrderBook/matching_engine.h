@@ -15,7 +15,8 @@ public:
     matching_engine() = delete;
     ~matching_engine()
     {
-        _log.join();
+        _trade_log.join();
+        _order_log.join();
     }
 
     matching_engine(const std::string& stock_name)
@@ -43,6 +44,7 @@ public:
                 matching_engine::_match_market_sell_order(order);
         }
 
+        _order_log.save(order);
         matching_engine::_clean_up();
     }
     bool cancel(const order_side& side, const id_type& order_id)
@@ -64,15 +66,16 @@ public:
     }
     void set_log_output_path(const std::filesystem::path& path)
     {
-        _log.set_output_path(path);
+        _trade_log.set_output_path(path);
+        _order_log.set_output_path(path);
     }
     void start_log()
     {
-        _log.start();
+        _trade_log.start();
     }
     void flush_log(const bool& yield = false)
     {
-        _log.flush(yield);
+        _trade_log.flush(yield);
     }
 
 public:
@@ -236,7 +239,7 @@ private:
         ZoneScopedN("_complete_trade");
 #endif
         trade.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
-        _log.save(trade);
+        _trade_log.save(trade);
     }
     void _match_limit_buy_order(incoming_order& limit_buy_order)
     {
@@ -455,7 +458,8 @@ private:
     std::deque<trade> _trades;
     std::map<uint32_t, std::deque<resting_order>, std::greater<>> _buy_price_levels;
     std::map<uint32_t, std::deque<resting_order>, std::less<>>  _sell_price_levels;
-    event_log<trade, 1'000, 100> _log;
+    event_log<trade, 1'000, 100> _trade_log;
+    event_log<incoming_order, 1'000, 100> _order_log;
 
     matching_config _config;
 };
